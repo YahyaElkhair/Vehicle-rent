@@ -1,0 +1,160 @@
+/* Please note this document will be updated as time goes by. Thank you */
+
+@import url("https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Prompt:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: "Poppins", sans-serif;
+  }
+}
+/* 
+@layer components {
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  textarea {
+    @apply block w-full rounded-md border-0 p-2 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm bg-white;
+  }
+  label {
+    @apply block text-sm font-medium leading-6 text-slate-900 first-letter:capitalize;
+  }
+  header {
+    @apply bg-slate-800 shadow-md;
+  }
+  nav {
+    @apply p-5 max-w-screen-lg mx-auto flex items-center justify-between;
+  }
+  main {
+    @apply max-w-screen-lg mx-auto;
+  }
+  .primary-btn {
+    @apply flex w-full justify-center rounded-md bg-blue-500 px-3 py-1.5 text-sm font-semibold leading-6 text-white shadow-sm hover:bg-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:bg-slate-400 disabled:cursor-not-allowed;
+  }
+  .text-link {
+    @apply font-semibold text-blue-500 hover:text-blue-600;
+  }
+  .nav-link {
+    @apply text-slate-200 hover:bg-slate-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium;
+  }
+  .title {
+    @apply my-6 text-center text-3xl font-bold leading-9 text-slate-900;
+  }
+  .error {
+    @apply text-xs text-red-500 mt-1;
+  }
+  table {
+    @apply w-full text-sm text-left rounded-md shadow-lg overflow-hidden mb-6 table-auto bg-white;
+  }
+  thead {
+    @apply text-xs uppercase font-medium border-b border-slate-100 text-slate-600;
+  }
+  tbody tr {
+    @apply hover:bg-slate-100 w-full p-0;
+  }
+  th {
+    @apply px-6 py-4;
+  }
+  td {
+    @apply px-6 py-4 border-b border-slate-100;
+  }
+  .avatar {
+    @apply w-8 h-8 rounded-full overflow-hidden object-center object-cover;
+  }
+
+  .alert {
+    @apply w-80 p-3 rounded shadow-md text-sm font-medium border absolute left-2 bottom-2 absolute sticky left-2 bottom-2;
+  }
+
+  .alert-success {
+    @apply alert bg-green-100 text-green-800 border-green-300;
+  }
+
+  .alert-error{
+    @apply alert bg-red-100 text-red-800 border-red-300;
+  }
+
+  .alert-info {
+    @apply alert bg-blue-100 text-blue-800 border-blue-300;
+  }
+} */
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@layer components {
+  .nav-link {
+    @apply hover:text-indigo-600 font-medium transition-colors duration-200;
+  }
+
+  .home-cards-titles {
+    @apply text-lg mb-4 font-semibold tracking-widest;
+  }
+
+  .explore-more-btn {
+    @apply inline-flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition;
+  }
+}
+
+@keyframes pulse-scale {
+  0% {
+    transform: scale(1);
+    opacity: 0.2;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.2;
+  }
+}
+
+@keyframes bounce-horizontal {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(5px);
+  }
+}
+
+/* Vehicles cards btns animation  */
+.animate-pulse-scale {
+  animation: pulse-scale 2s infinite;
+}
+
+.animate-bounce-horizontal {
+  animation: bounce-horizontal 0.6s infinite;
+}
+
+
+
+
+
+
+.hide-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari, Opera */
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
