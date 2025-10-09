@@ -1,4 +1,4 @@
-// src/components/AgencyPostsManager.jsx
+// src/components/PostsList.jsx
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -7,7 +7,7 @@ import {
     FiRefreshCw, FiAlertCircle
 } from 'react-icons/fi';
 
-const AgencyPostsManager = () => {
+const PostsList = () => {
     const [posts, setPosts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -33,23 +33,11 @@ const AgencyPostsManager = () => {
             }
 
             const data = await response.json();
+            console.log(data);
+            
             if (data.success) {
-                // Process vehicle images to full URLs
-                const processedPosts = data.data.map(post => {
-                    if (post.vehicle?.images) {
-                        return {
-                            ...post,
-                            vehicle: {
-                                ...post.vehicle,
-                                images: post.vehicle.images.map(img =>
-                                    img.startsWith('http') ? img : `${window.location.origin}/storage/${img}`
-                                )
-                            }
-                        };
-                    }
-                    return post;
-                });
-                setPosts(processedPosts);
+
+                setPosts(data.data);
             } else {
                 throw new Error(data.message || 'Failed to fetch posts');
             }
@@ -66,6 +54,7 @@ const AgencyPostsManager = () => {
     }, []);
 
     const handleDelete = async (postId) => {
+
         if (window.confirm('Are you sure you want to delete this post?')) {
             try {
                 const token = localStorage.getItem('token');
@@ -461,4 +450,4 @@ const AgencyPostsManager = () => {
     );
 };
 
-export default AgencyPostsManager;
+export default PostsList;

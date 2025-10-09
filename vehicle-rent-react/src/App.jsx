@@ -7,9 +7,8 @@ import Layout from "./Pages/Layout";
 import Home from "./Pages/Home";
 import Register from "./Pages/Auth/Register";
 import Login from "./Pages/Auth/Login";
-import Create from "./Pages/Posts/Create";
-import Show from "./Pages/Posts/Show";
-import Update from "./Pages/Posts/Update";
+
+
 import AdminDashboard from "./Pages/Admin/AdminDashboard"
 import Vehicles from "./Pages/Vehicles";
 import VehicleDetailPage from "./Pages/VehicleDetailPage";
@@ -18,13 +17,13 @@ import VehicleDetailPage from "./Pages/VehicleDetailPage";
 import Dashboard from "./Pages/Agency/Dashboard";
 import CreateAgency from "./Pages/Agency/CreateAgency";
 import AgencyVehicles from "./Pages/Agency/AgencyVehicles";
-import AgencyPostsManager from "./Pages/Agency/AgencyPostsManager";
+import PostsList from "./Pages/Agency/Posts/PostsList";
 
 import ManagerLayout from "./Layouts/ManagerLayout";
-import PostView from "./Pages/Agency/PostView";
-import PostEdit from "./Pages/Agency/PostEdit";
+import PostView from "./Pages/Agency/Posts/PostView";
+import PostEdit from "./Pages/Agency/Posts/PostEdit";
 
-import PostCreate from "./Pages/Agency/PostCreate";
+import PostCreate from "./Pages/Agency/Posts/PostCreate";
 import VehicleCreate from "./Pages/Agency/VehicleCreate";
 import AgencyManagerProfile from "./Pages/Agency/AgencyManagerProfile";
 
@@ -46,7 +45,7 @@ export default function App() {
           <Route path="login" element={user ? <Home /> : <Login />} />
           <Route path="vehicles" element={<Vehicles />} />
 
-          <Route path="create" element={user ? <Create /> : <Login />} />
+          {/* <Route path="create" element={user ? <Create /> : <Login />} /> */}
 
           <Route path="posts">
             <Route path=":id" element={<VehicleDetailPage />} />
@@ -94,7 +93,7 @@ export default function App() {
             element={
               user
                 ? user.roles[0].name === "agency manager"
-                  ? <AgencyPostsManager />
+                  ? <PostsList />
                   : <Navigate to="/error" />
                 : <Login />
             }

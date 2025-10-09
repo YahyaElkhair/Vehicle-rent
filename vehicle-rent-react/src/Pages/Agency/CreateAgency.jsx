@@ -258,7 +258,7 @@ const CreateAgency = () => {
         return;
       }
 
-      navigate("/manager");
+      navigate("manager/dashboard");
     } catch (error) {
       console.error("Submission error:", error);
       setErrors((prev) => ({ ...prev, form: error.message }));

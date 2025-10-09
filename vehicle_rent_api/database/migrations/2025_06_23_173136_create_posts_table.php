@@ -49,7 +49,7 @@ return new class extends Migration
 
             
             $table->timestamps();
-            $table->softDeletes();
+            // $table->softDeletes();
             
             // Indexes
             $table->index(['agency_id', 'status']);

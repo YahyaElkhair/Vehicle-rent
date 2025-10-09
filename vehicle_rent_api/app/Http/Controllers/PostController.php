@@ -10,7 +10,6 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class PostController extends Controller
 {
-
     public function __construct()
     {
         $this->middleware('auth:sanctum')->except(['index', 'show']);
@@ -19,6 +18,7 @@ class PostController extends Controller
     public function index(Request $request)
     {
         $query = Post::query()->with('vehicle.agency');
+
         // Apply main filters using the filter scope
         $query->filter($request->only([
             'popular',
@@ -33,90 +33,75 @@ class PostController extends Controller
             'max'
         ]));
 
-        // Handle sorting - using scopeSortBy
-        // $sortBy = $request->get('sort_by', 'created_at');
-        // $direction = $request->get('order', 'desc');
-
-        // $query->sortBy($sortBy, $direction);
-
-
         // Pagination
         $posts = $query->paginate(50);
 
         return response()->json($posts);
     }
 
-
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(Request $request)
     {
-        // Validate the request data
-        $validated = $request->validate([
-            'vehicle_id' => 'required|exists:vehicles,id',
-            'title' => 'required|string|max:255',
-            'description' => 'required|string',
-            'status' => 'nullable|in:draft,published,archived',
-            'delivery_options' => 'required|array',
-            'delivery_options.*' => 'in:agency pickup,delivery',
-            'min_driver_age' => 'nullable|integer|min:18|max:99',
-            'min_license_years' => 'nullable|integer|min:1|max:50',
-            'meta_title' => 'nullable|string|max:255',
-            'meta_description' => 'nullable|string|max:500',
-        ]);
-
-        // Create the post
         try {
+            $validated = $request->validate([
+                'vehicle_id' => 'required|exists:vehicles,id',
+                'title' => 'required|string|max:255',
+                'description' => 'required|string',
+                'status' => 'nullable|in:draft,published,archived',
+                'delivery_options' => 'required|array',
+                'delivery_options.*' => 'in:agency pickup,delivery',
+                'min_driver_age' => 'nullable|integer|min:18|max:99',
+                'min_license_years' => 'nullable|integer|min:1|max:50',
+                'meta_title' => 'nullable|string|max:255',
+                'meta_description' => 'nullable|string|max:500',
+            ]);
 
             $validated['slug'] = Str::slug($validated['title']);
             $post = $request->user()->agency->posts()->create($validated);
 
             $post = $post->load(['agency', 'vehicle']);
-            $post->agency->logo_path = Storage::url($post->agency->logo_path);
-            $post->vehicle->images = collect($post->vehicle->images)->map(fn($path) => Storage::url($path))->toArray();
+
+            // Process logo path
+            if ($post->agency && $post->agency->logo_path && !Str::startsWith($post->agency->logo_path, 'https')) {
+                $post->agency->logo_path = Storage::url($post->agency->logo_path);
+            }
+
+            // Process vehicle images
+            if ($post->vehicle && $post->vehicle->images) {
+                $post->vehicle->images = collect($post->vehicle->images)
+                    ->map(fn($path) => Storage::url($path))
+                    ->toArray();
+            }
 
             return response()->json([
+                'success' => true,
                 'message' => 'Post created successfully',
-                'post' => $post
+                'data' => $post
             ], 201);
-        } catch (\Illuminate\Database\QueryException $e) {
-            $errorCode = $e->errorInfo[1]; // MySQL error code
-            if ($errorCode == 1062) {
-                return response()->json([
-                    'error' => 'Each post must have a unique vehicle and title'
-                ], 422);
-            } elseif ($errorCode == 1452) {
-                // Foreign key constraint fails
-                return response()->json([
-                    'error' => 'Invalid vehicle or agency ID (foreign key constraint failed).'
-                ], 422);
-            } elseif ($errorCode == 1048) {
-                // Column cannot be null
-                return response()->json([
-                    'error' => 'A required field is missing. Please check your input.'
-                ], 422);
-            } else {
-                return response()->json([
-                    'error' => 'An unexpected database error occurred. Please try again later.'
-                ], 500);
-            }
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
+                'success' => false,
                 'errors' => $e->errors()
             ], 422);
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($e->errorInfo[1] == 1062) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Each post must have a unique vehicle and title'
+                ], 422);
+            }
+            return response()->json([
+                'success' => false,
+                'message' => 'Database error occurred'
+            ], 500);
         } catch (\Exception $e) {
             return response()->json([
-                'error' => 'Unexpected error occurred',
-                'message' => $e->getMessage(),
-                // 'trace' => $e->getTrace() // Uncomment for debugging
+                'success' => false,
+                'message' => 'Unexpected error occurred',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
 
-    /**
-     * Display the specified resource.
-     */
     public function show($id)
     {
         try {
@@ -124,126 +109,212 @@ class PostController extends Controller
                 'agency',
                 'vehicle',
                 'comments' => function ($q) {
-                    $q->whereNull('deleted_at')
-                        ->with('user');
+                    $q->whereNull('deleted_at')->with('user');
                 }
-            ])->findOrFail($id); // throws exception if not found
+            ])->findOrFail($id);
 
             $post->increment('view_count');
 
-            if (!Str::startsWith($post->agency->logo_path, 'https')) {
+            // Process logo path with null check
+            if ($post->agency && $post->agency->logo_path && !Str::startsWith($post->agency->logo_path, 'https')) {
                 $post->agency->logo_path = Storage::url($post->agency->logo_path);
             }
-            
-            $post->vehicle->images = collect($post->vehicle->images)->map(fn($path) => Storage::url($path))->toArray();
 
-            return response()->json($post);
+            // Process vehicle images with null checks
+            if ($post->vehicle && $post->vehicle->images) {
+                $post->vehicle->images = collect($post->vehicle->images)
+                    ->map(function ($path) {
+                        if (Str::startsWith($path, ['http://', 'https://'])) {
+                            return $path;
+                        }
+                        return Storage::url($path);
+                    })
+                    ->toArray();
+            } else if ($post->vehicle) {
+                // If vehicle exists but has no images, set empty array
+                $post->vehicle->images = [];
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $post
+            ], 200);
         } catch (ModelNotFoundException $e) {
-            return response()->json(['error' => 'Post not found.'], 404);
+            return response()->json([
+                'success' => false,
+                'message' => 'Post not found'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch post',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, Post $post)
+    public function update(Request $request, $id)
     {
-        $validated = $request->validate([
-            'vehicle_id' => 'sometimes|exists:vehicles,id',
-            'title' => 'sometimes|string|max:255',
-            'description' => 'sometimes|string',
-            'status' => 'sometimes|in:draft,published,archived',
-            'delivery_options' => 'sometimes|array',
-            'delivery_options.*' => 'in:agency pickup,delivery',
-            'min_driver_age' => 'sometimes|integer|min:18|max:99',
-            'min_license_years' => 'sometimes|integer|min:1|max:50',
-            'meta_title' => 'sometimes|string|max:255',
-            'meta_description' => 'sometimes|string|max:500',
-        ]);
+        try {
+            $post = Post::findOrFail($id);
 
-        // Create the post
-        $post->update($validated);
-        $post = $post->load(['agency', 'vehicle']);
-        $post->agency->logo_path = Storage::url($post->agency->logo_path);
-        $post->vehicle->images = collect($post->vehicle->images)->map(fn($path) => Storage::url($path))->toArray();
+            // Authorization check
+            $agency = $request->user()->agency;
 
-        return response()->json([
-            'message' => 'Post updated successfully',
-            'post' => $post
-        ], 201);
+            if (!$agency) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You do not have an agency'
+                ], 403);
+            }
+
+            if ($post->agency_id !== $agency->id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized to edit this post'
+                ], 403);
+            }
+
+            $validated = $request->validate([
+                'vehicle_id' => 'sometimes|exists:vehicles,id',
+                'title' => 'sometimes|string|max:255',
+                'description' => 'sometimes|string',
+                'status' => 'sometimes|in:draft,published,archived',
+                'delivery_options' => 'sometimes|array',
+                'delivery_options.*' => 'in:agency pickup,delivery',
+                'min_driver_age' => 'sometimes|integer|min:18|max:99',
+                'min_license_years' => 'sometimes|integer|min:1|max:50',
+                'meta_title' => 'nullable|string|max:255',
+                'meta_description' => 'nullable|string|max:500',
+            ]);
+
+            // Update slug if title changed
+            if (isset($validated['title'])) {
+                $validated['slug'] = Str::slug($validated['title']);
+            }
+
+            $post->update($validated);
+            $post = $post->load(['agency', 'vehicle']);
+
+            // Process logo path
+            if ($post->agency && $post->agency->logo_path && !Str::startsWith($post->agency->logo_path, 'https')) {
+                $post->agency->logo_path = Storage::url($post->agency->logo_path);
+            }
+
+            // Process vehicle images
+            if ($post->vehicle && $post->vehicle->images) {
+                $post->vehicle->images = collect($post->vehicle->images)
+                    ->map(fn($path) => Storage::url($path))
+                    ->toArray();
+            } else if ($post->vehicle) {
+                $post->vehicle->images = [];
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Post updated successfully',
+                'data' => $post
+            ], 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'errors' => $e->errors()
+            ], 422);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Post not found'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update post',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(Post $post)
+    public function destroy(Request $request, $id)
     {
-        $post->delete();
-        return response()->json(['message' => 'Post deleted successfully.']);
+        try {
+            $post = Post::findOrFail($id);
+
+            // Authorization check
+            $agency = $request->user()->agency;
+
+            if (!$agency) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You do not have an agency'
+                ], 403);
+            }
+
+            if ($post->agency_id !== $agency->id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized to delete this post'
+                ], 403);
+            }
+
+            // Check for active reservations with null check
+            if ($post->vehicle) {
+                $activeReservations = $post->vehicle->reservations()
+                    ->whereIn('status', ['pending', 'confirmed', 'active'])
+                    ->count();
+
+                if ($activeReservations > 0) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Cannot delete post with active reservations'
+                    ], 422);
+                }
+            }
+
+            // Delete associated data
+            $post->comments()->delete();
+            $post->advertisements()->delete();
+            $post->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Post deleted successfully'
+            ], 200);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Post not found'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete post',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
-    /**
-     * Update post rating
-     */
-    public function rate(Post $post, int $rating)
-    {
-        $validated = validator(['rating' => $rating], [
-            'rating' => 'required|integer|between:1,5'
-        ])->validate();
-
-        // Update rating counts
-        $post->increment($this->getStarFieldName($rating));
-        $post->increment('total_reviews');
-
-        // Calculate new average
-        $average = $this->calculateAverageRating($post);
-        $post->update(['average_rating' => $average]);
-
-        return response()->json(['average_rating' => $average]);
-    }
-
-    private function getStarFieldName(int $rating): string
-    {
-        return match ($rating) {
-            1 => 'one_star_count',
-            2 => 'two_star_count',
-            3 => 'three_star_count',
-            4 => 'four_star_count',
-            5 => 'five_star_count',
-        };
-    }
-
-    private function calculateAverageRating(Post $post): float
-    {
-        $total = ($post->five_star_count * 5)
-            + ($post->four_star_count * 4)
-            + ($post->three_star_count * 3)
-            + ($post->two_star_count * 2)
-            + ($post->one_star_count * 1);
-
-        return round($total / $post->total_reviews, 1);
-    }
-
-
-
-
-
-
-    // Add to PostController.php
     public function getByAgency($agencyId)
     {
         $posts = Post::where('agency_id', $agencyId)
             ->with(['agency', 'vehicle'])
             ->get();
 
-        // Convert image paths to URLs
         $posts->each(function ($post) {
-            $post->agency->logo_path = Storage::url($post->agency->logo_path);
-            $post->vehicle->images = collect($post->vehicle->images)
-                ->map(fn($path) => Storage::url($path))
-                ->toArray();
+            if ($post->agency && $post->agency->logo_path && !Str::startsWith($post->agency->logo_path, 'https')) {
+                $post->agency->logo_path = Storage::url($post->agency->logo_path);
+            }
+            if ($post->vehicle && $post->vehicle->images) {
+                $post->vehicle->images = collect($post->vehicle->images)
+                    ->map(fn($path) => Storage::url($path))
+                    ->toArray();
+            } else if ($post->vehicle) {
+                $post->vehicle->images = [];
+            }
         });
 
-        return response()->json($posts);
+        return response()->json([
+            'success' => true,
+            'data' => $posts
+        ]);
     }
 }
