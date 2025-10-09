@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Post;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
@@ -17,28 +19,140 @@ class PostController extends Controller
 
     public function index(Request $request)
     {
-        $query = Post::query()->with('vehicle.agency');
+        try {
+            // Handle sorting parameters first
+            $sortBy = $request->get('sort_by', 'created_at');
+            $order = $request->get('order', 'desc');
 
-        // Apply main filters using the filter scope
-        $query->filter($request->only([
-            'popular',
-            'agency_name',
-            'brand',
-            'vehicle_status',
-            'vehicle_age',
-            'license',
-            'delivery',
-            'search',
-            'min',
-            'max'
-        ]));
+            // Base query
+            $query = Post::query()->where('status', 'published');
 
-        // Pagination
-        $posts = $query->paginate(50);
+            // Apply main filters using the filter scope
+            $query->filter($request->only([
+                'popular',
+                'agency_name',
+                'brand',
+                'vehicle_status',
+                'vehicle_age',
+                'license',
+                'delivery',
+                'search',
+                'min',
+                'max'
+            ]));
 
-        return response()->json($posts);
+            // Handle sorting BEFORE eager loading
+            switch ($sortBy) {
+                case 'price':
+                    // Use orderBy with subquery
+                    $query->orderBy(
+                        DB::table('vehicles')
+                            ->select('price_per_day')
+                            ->whereColumn('vehicles.id', 'posts.vehicle_id')
+                            ->limit(1),
+                        $order
+                    );
+                    break;
+
+                case 'rating':
+                    $query->orderBy('average_rating', $order);
+                    break;
+
+                case 'popularity':
+                    $query->orderBy('view_count', $order);
+                    break;
+
+                case 'year':
+                    $query->orderBy(
+                        DB::table('vehicles')
+                            ->select('year')
+                            ->whereColumn('vehicles.id', 'posts.vehicle_id')
+                            ->limit(1),
+                        $order
+                    );
+                    break;
+
+                case 'mileage':
+                    $query->orderBy(
+                        DB::table('vehicles')
+                            ->select('mileage')
+                            ->whereColumn('vehicles.id', 'posts.vehicle_id')
+                            ->limit(1),
+                        $order
+                    );
+                    break;
+
+                default:
+                    $query->orderBy($sortBy, $order);
+                    break;
+            }
+
+            // Add eager loading AFTER sorting
+            $query->with(['vehicle', 'agency']);
+
+            // Pagination
+            $perPage = $request->get('per_page', 12);
+            $posts = $query->paginate($perPage);
+
+            // Process each post
+            $posts->getCollection()->transform(function ($post) {
+                // Process agency logo
+                if ($post->agency && $post->agency->logo_path) {
+                    if (!Str::startsWith($post->agency->logo_path, ['http://', 'https://'])) {
+                        $post->agency->logo_path = Storage::url($post->agency->logo_path);
+                    }
+                }
+
+                // Process vehicle images
+                if ($post->vehicle) {
+                    if ($post->vehicle->images && is_array($post->vehicle->images)) {
+                        $post->vehicle->images = collect($post->vehicle->images)
+                            ->map(function ($path) {
+                                if (empty($path)) return null;
+                                if (Str::startsWith($path, ['http://', 'https://'])) {
+                                    return $path;
+                                }
+                                return Storage::url($path);
+                            })
+                            ->filter()
+                            ->values()
+                            ->toArray();
+                    } else {
+                        $post->vehicle->images = [];
+                    }
+
+                    // Add placeholder if no images
+                    if (empty($post->vehicle->images)) {
+                        $post->vehicle->images = [
+                            'https://via.placeholder.com/600x400/4F46E5/FFFFFF?text=' .
+                                urlencode($post->vehicle->brand . ' ' . $post->vehicle->model)
+                        ];
+                    }
+                }
+
+                return $post;
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $posts->items(),
+                'total' => $posts->total(),
+                'per_page' => $posts->perPage(),
+                'current_page' => $posts->currentPage(),
+                'last_page' => $posts->lastPage(),
+                'from' => $posts->firstItem(),
+                'to' => $posts->lastItem()
+            ]);
+        } catch (\Exception $e) {
+
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch posts',
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+            ], 500);
+        }
     }
-
     public function store(Request $request)
     {
         try {

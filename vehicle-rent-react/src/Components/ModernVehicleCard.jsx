@@ -1,121 +1,235 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
-    FaCarSide, FaMapMarkerAlt, FaStar, FaUserFriends,
-    FaGasPump, FaChevronLeft, FaChevronRight, FaEye
+    FaStar, FaMapMarkerAlt, FaGasPump, FaChevronLeft,
+    FaChevronRight, FaHeart
 } from 'react-icons/fa';
+import { GiGearStickPattern } from 'react-icons/gi';
+import { BsPeopleFill } from 'react-icons/bs';
 import { Link } from 'react-router-dom';
 
 function ModernVehicleCard({ post }) {
-    const vehicle = post.vehicle || {};
-    const agency = vehicle.agency || {};
-    const images = vehicle.images || [];
+    const vehicle = post?.vehicle || {};
+    const agency = post?.agency || {};
+    const images = vehicle?.images || [];
 
     const [currentIndex, setCurrentIndex] = useState(0);
+    const [imageError, setImageError] = useState(false);
+    const [isImageLoading, setIsImageLoading] = useState(true);
+    const [isInView, setIsInView] = useState(false);
+    const [isFavorite, setIsFavorite] = useState(false);
+    const cardRef = useRef(null);
 
-    const prevImage = () => {
-        setCurrentIndex((prevIndex) => (prevIndex === 0 ? images.length - 1 : prevIndex - 1));
+    // Extract values
+    const brand = vehicle.brand || 'Unknown';
+    const model = vehicle.model || 'Model';
+    const year = vehicle.year || 'N/A';
+    const pricePerDay = vehicle.price_per_day || 0;
+    const rating = parseFloat(post.average_rating) || 0;
+    const reviewCount = post.total_reviews || 0;
+    const transmission = vehicle.transmission_type || 'Auto';
+    const fuelType = vehicle.fuel_type || 'Gasoline';
+    const seats = vehicle.seats || 5;
+    const agencyName = agency.name || 'Agency';
+    const postTitle = post.title || `${brand} ${model} ${year}`;
+
+    // Intersection Observer for lazy loading
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        setIsInView(true);
+                        observer.unobserve(entry.target);
+                    }
+                });
+            },
+            { rootMargin: '100px', threshold: 0.1 }
+        );
+
+        if (cardRef.current) {
+            observer.observe(cardRef.current);
+        }
+
+        return () => {
+            if (cardRef.current) {
+                observer.unobserve(cardRef.current);
+            }
+        };
+    }, []);
+
+    const prevImage = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setCurrentIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
+        setIsImageLoading(true);
     };
 
-    const nextImage = () => {
-        setCurrentIndex((prevIndex) => (prevIndex === images.length - 1 ? 0 : prevIndex + 1));
+    const nextImage = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setCurrentIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1));
+        setIsImageLoading(true);
     };
+
+    const toggleFavorite = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsFavorite(!isFavorite);
+    };
+
+    const currentImage = images[currentIndex];
 
     return (
-        <Link to={`/posts/${post.id}`} >
-            <div className="group bg-white border border-gray-200 rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 flex flex-col h-full">
-                <div className="relative w-full aspect-video overflow-hidden">
-                    {images.length > 0 ? (
-                        <img
-                            src={images[currentIndex]}
-                            alt={post.title || `${vehicle.brand} ${vehicle.model}`}
-                            className="w-full h-full object-cover transition-all duration-500"
-                        />
-                    ) : (
-                        <img
-                            src="https://placehold.co/600x400?text=No+Image"
-                            alt="No image"
-                            className="w-full h-full object-cover"
-                        />
-                    )}
+        <div ref={cardRef} className="w-full">
+            <Link to={`/posts/${post.id}`} className="group block">
+                <div className="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-2xl transition-all duration-300 border border-gray-100">
+                    {/* Image Container */}
+                    <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
+                        {/* Loading State */}
+                        {(!isInView || isImageLoading) && !imageError && (
+                            <div className="absolute inset-0 bg-gray-200 animate-pulse flex items-center justify-center">
+                                <svg className="w-12 h-12 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                                    <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+                                </svg>
+                            </div>
+                        )}
 
-                    {images.length > 1 && (
-                        <>
-                            <button
-                                onClick={prevImage}
-                                className="absolute top-1/2 left-2 transform -translate-y-1/2 bg-white bg-opacity-70 hover:bg-opacity-100 p-1 rounded-full shadow"
-                            >
-                                <FaChevronLeft className="text-gray-700" />
-                            </button>
-                            <button
-                                onClick={nextImage}
-                                className="absolute top-1/2 right-2 transform -translate-y-1/2 bg-white bg-opacity-70 hover:bg-opacity-100 p-1 rounded-full shadow"
-                            >
-                                <FaChevronRight className="text-gray-700" />
-                            </button>
-                        </>
-                    )}
+                        {/* Image */}
+                        {isInView && images.length > 0 && !imageError ? (
+                            <img
+                                src={currentImage}
+                                alt={postTitle}
+                                loading="lazy"
+                                className={`w-full h-full object-cover transition-all duration-500 group-hover:scale-105 ${isImageLoading ? 'opacity-0' : 'opacity-100'
+                                    }`}
+                                onLoad={() => setIsImageLoading(false)}
+                                onError={() => {
+                                    setImageError(true);
+                                    setIsImageLoading(false);
+                                }}
+                            />
+                        ) : isInView && (imageError || images.length === 0) ? (
+                            <div className="absolute inset-0 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                                <div className="text-center">
+                                    <svg className="w-16 h-16 text-gray-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    <p className="text-sm text-gray-400 font-medium">No image</p>
+                                </div>
+                            </div>
+                        ) : null}
 
-                    {/* Popular badge */}
-                    {post.view_count > 100 && (
-                        <div className="absolute top-3 left-3 bg-red-600 text-white text-xs px-3 py-1 rounded-full">
-                            Popular
+                        {/* Navigation Arrows */}
+                        {images.length > 1 && isInView && !imageError && (
+                            <>
+                                <button
+                                    onClick={prevImage}
+                                    className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white/90 rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white"
+                                    aria-label="Previous"
+                                >
+                                    <FaChevronLeft className="text-gray-700 text-sm" />
+                                </button>
+                                <button
+                                    onClick={nextImage}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white/90 rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white"
+                                    aria-label="Next"
+                                >
+                                    <FaChevronRight className="text-gray-700 text-sm" />
+                                </button>
+                            </>
+                        )}
+
+                        {/* Dots Indicator */}
+                        {images.length > 1 && isInView && !imageError && (
+                            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1">
+                                {images.map((_, idx) => (
+                                    <div
+                                        key={idx}
+                                        className={`h-1 rounded-full transition-all ${idx === currentIndex
+                                                ? 'w-4 bg-white'
+                                                : 'w-1 bg-white/60'
+                                            }`}
+                                    />
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Favorite Button */}
+                        <button
+                            onClick={toggleFavorite}
+                            className="absolute top-3 right-3 w-9 h-9 bg-white/90 rounded-full flex items-center justify-center shadow-md hover:bg-white hover:scale-110 transition-all"
+                            aria-label="Add to favorites"
+                        >
+                            <FaHeart className={`text-sm ${isFavorite ? 'text-red-500 fill-current' : 'text-gray-600'}`} />
+                        </button>
+                    </div>
+
+                    {/* Content */}
+                    <div className="p-4">
+                        {/* Location & Rating */}
+                        <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center text-sm text-gray-600 min-w-0 flex-1">
+                                <FaMapMarkerAlt className="flex-shrink-0 mr-1 text-gray-400" />
+                                <span className="truncate font-medium">{agencyName}</span>
+                            </div>
+                            {reviewCount > 0 && (
+                                <div className="flex items-center ml-2 flex-shrink-0">
+                                    <FaStar className="text-yellow-400 text-sm mr-1" />
+                                    <span className="text-sm font-semibold text-gray-900">
+                                        {rating}
+                                    </span>
+                                    <span className="text-sm text-gray-500 ml-1">
+                                        ({reviewCount})
+                                    </span>
+                                </div>
+                            )}
                         </div>
-                    )}
 
-                    {/* View count */}
-                    <div className="absolute bottom-3 right-3 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded flex items-center">
-                        <FaEye className="mr-1" />
-                        <span>{post.view_count || 0}</span>
+                        {/* Post Title */}
+                        <h3 className="text-base font-semibold text-gray-900 mb-1 line-clamp-2">
+                            {postTitle}
+                        </h3>
+
+                        {/* Brand, Model & Year */}
+                        <p className="text-xs text-gray-500 mb-3">
+                            {brand} {model} • {year}
+                        </p>
+
+                        {/* Specs */}
+                        <div className="flex items-center gap-3 text-xs text-gray-600 mb-3 pb-3 border-b border-gray-100">
+                            <div className="flex items-center gap-1">
+                                <GiGearStickPattern className="text-gray-400" />
+                                <span>{transmission}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <FaGasPump className="text-gray-400" />
+                                <span>{fuelType}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <BsPeopleFill className="text-gray-400" />
+                                <span>{seats}</span>
+                            </div>
+                        </div>
+
+                        {/* Price */}
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <span className="text-xl font-bold text-gray-900">
+                                    ${pricePerDay}
+                                </span>
+                                <span className="text-sm text-gray-500 ml-1">
+                                    /day
+                                </span>
+                            </div>
+                            <div className="text-sm font-semibold text-indigo-600 underline">
+                                View details
+                            </div>
+                        </div>
                     </div>
                 </div>
-
-                <div className="p-4 flex flex-col flex-grow">
-                    {/* Brand and title section */}
-                    <div className="flex justify-between items-start mb-2">
-                        <div className="flex-1 min-w-0">
-                            <div className="text-sm font-semibold text-blue-600 truncate" title={`${vehicle.brand || 'Unknown Brand'} - Model ${vehicle.year || 'Unknown Year'}`}>
-                                {vehicle.brand || 'Unknown Brand'} - Model {vehicle.year}
-                            </div>
-                            <h3 className="text-lg font-semibold text-gray-800 truncate" title={post.title || `${vehicle.brand} ${vehicle.model}`}>
-                                {post.title || `${vehicle.brand} ${vehicle.model}`}
-                            </h3>
-                        </div>
-                        <div className="flex-shrink-0 ml-2">
-                            <div className="flex items-center gap-1 text-yellow-500">
-                                <FaStar className="text-sm" />
-                                <span className="text-sm font-medium">{post.average_rating || '0.0'}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <p className="text-sm text-gray-500 mb-2 truncate">by {agency.name || 'Unknown Agency'}</p>
-
-                    <div className="flex items-center text-sm text-gray-600 mb-3 space-x-2">
-                        <FaMapMarkerAlt className="text-blue-500 flex-shrink-0" />
-                        <span className="truncate">Morocco</span>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 text-xs text-gray-700 mb-4">
-                        <div className="flex items-center gap-1"><FaCarSide /> {vehicle.transmission || 'Automatic'}</div>
-                        <div className="flex items-center gap-1"><FaGasPump /> {vehicle.fuel_type || 'Gasoline'}</div>
-                        <div className="flex items-center gap-1"><FaUserFriends /> {vehicle.seats || 5} Seats</div>
-                        <div className="flex items-center gap-1">AC: {vehicle.features?.includes('AC') ? 'Yes' : 'No'}</div>
-                    </div>
-
-                    <div className="mt-auto">
-                        <div className="flex justify-between items-center mb-4">
-                            <div className="text-blue-600 font-bold text-lg">
-                                ${vehicle.price_per_day || '0.00'}/day
-                            </div>
-                        </div>
-
-
-                    </div>
-                </div>
-            </div >
-
-        </Link>
-
+            </Link>
+        </div>
     );
 }
 

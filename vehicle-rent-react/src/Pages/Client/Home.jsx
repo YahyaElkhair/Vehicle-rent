@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { FaArrowLeft, FaArrowRight } from 'react-icons/fa';
-import VehicleCard from '../Components/VehicleCard';
+import VehicleCard from '../../Components/VehicleCard';
 
 
 

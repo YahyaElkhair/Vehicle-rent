@@ -4,14 +4,14 @@ import { useContext } from "react";
 
 
 import Layout from "./Pages/Layout";
-import Home from "./Pages/Home";
+import Home from "./Pages/Client/Home";
 import Register from "./Pages/Auth/Register";
 import Login from "./Pages/Auth/Login";
 
 
 import AdminDashboard from "./Pages/Admin/AdminDashboard"
-import Vehicles from "./Pages/Vehicles";
-import VehicleDetailPage from "./Pages/VehicleDetailPage";
+import Vehicles from "./Pages/Client/Vehicles";
+import VehicleDetailPage from "./Pages/Client/VehicleDetailPage";
 
 // Agency
 import Dashboard from "./Pages/Agency/Dashboard";

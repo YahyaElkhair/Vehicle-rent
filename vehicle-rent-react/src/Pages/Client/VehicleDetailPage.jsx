@@ -9,9 +9,9 @@ import {
     FaTag, FaCheckCircle, FaRoad, FaDollarSign, FaTrash,
     FaUserCircle
 } from 'react-icons/fa';
-import { AppContext } from "../context/AppContext";
+import { AppContext } from "../../Context/AppContext";
 
-import RentModal from '../Components/RentModal';
+import RentModal from '../../Components/RentModal';
 
 
 export default function VehicleDetailPage() {
