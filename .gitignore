@@ -1,0 +1,54 @@
+# --- Workspace & OS miscellany ---
+.vscode/
+.DS_Store
+Thumbs.db
+
+# --- Laravel backend: vehicle_rent_api ---
+vehicle_rent_api/vendor/
+vehicle_rent_api/node_modules/        # in case you ever seed JS dependencies there
+vehicle_rent_api/public/hot
+vehicle_rent_api/public/storage
+vehicle_rent_api/storage/*.key
+vehicle_rent_api/storage/app/public
+vehicle_rent_api/storage/framework/cache/
+vehicle_rent_api/storage/framework/sessions/
+vehicle_rent_api/storage/framework/testing/
+vehicle_rent_api/storage/framework/views/
+vehicle_rent_api/storage/logs/
+vehicle_rent_api/bootstrap/cache/
+
+vehicle_rent_api/.env
+vehicle_rent_api/.env.*               # catch any extra environment variants
+vehicle_rent_api/.phpunit.result.cache
+vehicle_rent_api/.phpunit.cache
+vehicle_rent_api/coverage/
+vehicle_rent_api/npm-debug.log*
+vehicle_rent_api/yarn-debug.log*
+vehicle_rent_api/yarn-error.log*
+
+# --- React frontend: vehicle-rent-react ---
+vehicle-rent-react/node_modules/
+vehicle-rent-react/build/
+vehicle-rent-react/dist/
+vehicle-rent-react/.cache/
+vehicle-rent-react/.next/             # just in case of future Next.js experiments
+vehicle-rent-react/.turbo/
+vehicle-rent-react/.eslintcache
+vehicle-rent-react/pnp.*              # Yarn Plug'n'Play
+vehicle-rent-react/.pnp/
+vehicle-rent-react/.pnp.js
+vehicle-rent-react/.pnp.cjs
+vehicle-rent-react/.pnp.loader.mjs
+
+vehicle-rent-react/.env
+vehicle-rent-react/.env.*             # local, development, production variants
+vehicle-rent-react/npm-debug.log*
+vehicle-rent-react/yarn-debug.log*
+vehicle-rent-react/yarn-error.log*
+vehicle-rent-react/web.iml
+
+# --- Common dependency & package manager leftovers ---
+package-lock.json.*
+yarn.lock.*
+pnpm-lock.yaml.*
+*.tsbuildinfo

@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppContext } from "./Context/AppContext";
 import { useContext } from "react";
 
+
 import Layout from "./Pages/Layout";
 import Home from "./Pages/Home";
 import Register from "./Pages/Auth/Register";
