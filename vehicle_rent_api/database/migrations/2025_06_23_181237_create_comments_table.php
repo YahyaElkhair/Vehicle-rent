@@ -18,13 +18,13 @@ return new class extends Migration
             
             // Content
             $table->text('content')->nullable();
+            $table->integer('rating')->default(0);
             
             // Stats
             $table->unsignedInteger('likes_count')->default(0);
             
             $table->timestamps();
-            $table->softDeletes();
-            
+            $table->unique(['user_id', 'post_id'], 'unique_post_user');
             // Indexes
             $table->index('post_id');
             $table->index(['user_id', 'created_at']);

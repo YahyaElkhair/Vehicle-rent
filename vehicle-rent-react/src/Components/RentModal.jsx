@@ -6,6 +6,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import Map from './Map';
 import PayPalPayment from './PayPalPayment';
 import { AppContext } from '../Context/AppContext';
+import { useToast } from '../Components/Toast/ToastContainer';
 
 export default function RentalModal({
     vehicle,
@@ -14,7 +15,11 @@ export default function RentalModal({
     onClose,
 }) {
     const [startDate, setStartDate] = useState(new Date());
-    const [endDate, setEndDate] = useState(null);
+    const [endDate, setEndDate] = useState(() => {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        return tomorrow;
+    });
     const [deliveryOption, setDeliveryOption] = useState('agency pickup');
     const [userLocation, setUserLocation] = useState(null);
     const [deliveryLocation, setDeliveryLocation] = useState(null);
@@ -27,6 +32,21 @@ export default function RentalModal({
     const [calculatingDistance, setCalculatingDistance] = useState(false);
 
     const { token } = useContext(AppContext);
+    const toast = useToast();
+
+    // Helper to get next day
+    const getNextDay = (date) => {
+        const nextDay = new Date(date);
+        nextDay.setDate(nextDay.getDate() + 1);
+        return nextDay;
+    };
+
+    // Update endDate when startDate changes
+    useEffect(() => {
+        if (startDate) {
+            setEndDate(getNextDay(startDate));
+        }
+    }, [startDate]);
 
     // Use refs to avoid dependency loops
     const fallbackTimeoutRef = useRef(null);
@@ -44,7 +64,7 @@ export default function RentalModal({
                     const parsed = JSON.parse(coords);
                     return parseCoords(parsed);
                 } catch (e) {
-                    console.error('❌ Failed to parse JSON string:', e);
+                    return defaultCoords;
                 }
             }
 
@@ -55,7 +75,6 @@ export default function RentalModal({
                 const first = parseFloat(parts[0]);
                 const second = parseFloat(parts[1]);
                 if (!isNaN(first) && !isNaN(second)) {
-                    // Swap [lat, lng] to [lng, lat]
                     return [second, first];
                 }
             }
@@ -66,14 +85,12 @@ export default function RentalModal({
             const [first, second] = coords.map(c => parseFloat(c));
             if (isNaN(first) || isNaN(second)) return defaultCoords;
 
-            // If first looks like lat (within -90 to 90), swap to [lng, lat]
             if (Math.abs(first) <= 90 && Math.abs(second) > 90) {
                 return [second, first];
             }
             if (Math.abs(first) > 90) {
                 return [first, second];
             }
-            // Both in lat range, assume [lat, lng] and swap
             return [second, first];
         }
 
@@ -143,7 +160,7 @@ export default function RentalModal({
         };
     }, []);
 
-    // Get user location - NO dependencies that cause loops
+    // Get user location
     const getUserLocation = () => {
         setLoadingLocation(true);
         setLocationError('');
@@ -151,9 +168,11 @@ export default function RentalModal({
         hasCalculatedFallbackRef.current = false;
 
         if (!navigator.geolocation) {
-            setLocationError('Geolocation is not supported by your browser');
+            const errorMsg = 'Geolocation is not supported by your browser';
+            setLocationError(errorMsg);
             setLoadingLocation(false);
             setCalculatingDistance(false);
+            toast.error(errorMsg, 'Location Error');
             return;
         }
 
@@ -162,15 +181,14 @@ export default function RentalModal({
                 const { latitude, longitude } = position.coords;
                 const newLocation = [longitude, latitude];
 
-                console.log('📍 User location:', newLocation);
-
                 setUserLocation(newLocation);
                 setDeliveryLocation(newLocation);
                 setLoadingLocation(false);
 
+                toast.success('Location retrieved successfully', 'Success');
+
                 // Calculate Haversine distance
                 const haversineDistance = calculateHaversineDistance(agencyCoords, newLocation);
-                console.log('📏 Haversine distance:', haversineDistance.toFixed(2), 'km');
 
                 // Clear any existing timeout
                 if (fallbackTimeoutRef.current) {
@@ -180,18 +198,34 @@ export default function RentalModal({
                 // Set fallback timeout - only if not already calculated
                 fallbackTimeoutRef.current = setTimeout(() => {
                     if (!hasCalculatedFallbackRef.current) {
-                        console.log('⚠️ Using Haversine fallback distance');
                         setDistance(parseFloat(haversineDistance.toFixed(1)));
                         setCalculatingDistance(false);
                         hasCalculatedFallbackRef.current = true;
+                        toast.info(`Distance calculated: ${haversineDistance.toFixed(1)} km`, 'Route Distance');
                     }
                 }, 3000);
             },
             (error) => {
-                console.error('❌ Geolocation error:', error);
-                setLocationError('Unable to retrieve your location');
+                let errorMsg = 'Unable to retrieve your location';
+
+                switch (error.code) {
+                    case error.PERMISSION_DENIED:
+                        errorMsg = 'Location permission denied. Please enable location services.';
+                        break;
+                    case error.POSITION_UNAVAILABLE:
+                        errorMsg = 'Location information unavailable.';
+                        break;
+                    case error.TIMEOUT:
+                        errorMsg = 'Location request timed out.';
+                        break;
+                    default:
+                        errorMsg = 'An unknown error occurred while getting location.';
+                }
+
+                setLocationError(errorMsg);
                 setLoadingLocation(false);
                 setCalculatingDistance(false);
+                toast.error(errorMsg, 'Location Error');
             },
             {
                 enableHighAccuracy: true,
@@ -201,10 +235,8 @@ export default function RentalModal({
         );
     };
 
-    // Handle route calculation from Map - FIXED: Distance is already in KM
+    // Handle route calculation from Map
     const handleRouteCalculated = useCallback((routeInfo) => {
-        console.log('🗺️ Route calculated:', routeInfo);
-
         if (routeInfo?.distance && deliveryOption === 'home delivery') {
             // Clear fallback timeout since we got a route
             if (fallbackTimeoutRef.current) {
@@ -212,28 +244,22 @@ export default function RentalModal({
             }
             hasCalculatedFallbackRef.current = true;
 
-            // FIXED: The distance from Map component is already in kilometers
-            // Previously: const distanceInKm = routeInfo.distance / 1000;
-            const distanceInKm = routeInfo.distance; // Already in KM!
+            const distanceInKm = routeInfo.distance;
             const roundedDistance = parseFloat(distanceInKm.toFixed(1));
-
-            console.log('📏 Route distance (raw):', routeInfo.distance, 'km');
-            console.log('📏 Route distance (rounded):', roundedDistance, 'km');
 
             if (roundedDistance > 0 && roundedDistance < 10000) {
                 setDistance(roundedDistance);
                 setCalculatingDistance(false);
-                console.log('✅ Distance set to:', roundedDistance, 'km');
+                toast.success(`Route calculated: ${roundedDistance} km`, 'Distance Updated');
             } else {
-                console.error('❌ Invalid distance:', roundedDistance, 'km');
                 setCalculatingDistance(false);
+                toast.warning('Invalid distance received, using fallback calculation', 'Distance Warning');
             }
         }
-    }, [deliveryOption]);
+    }, [deliveryOption, toast]);
 
-    // Handle delivery location change - STABLE function
+    // Handle delivery location change
     const handleDeliveryLocationChange = useCallback((newLocation) => {
-        console.log('📍 Delivery location updated:', newLocation);
         setDeliveryLocation(newLocation);
         setCalculatingDistance(true);
         hasCalculatedFallbackRef.current = false;
@@ -241,19 +267,18 @@ export default function RentalModal({
 
     // Handle delivery option change
     const handleDeliveryOptionChange = (option) => {
-        console.log('🚚 Delivery option:', option);
         setDeliveryOption(option);
 
         if (option === 'home delivery') {
+            toast.info('Home delivery selected. Please set your location.', 'Delivery Option');
             if (!userLocation) {
                 getUserLocation();
             } else {
-                // Already have location, just recalculate
                 setCalculatingDistance(true);
                 hasCalculatedFallbackRef.current = false;
             }
         } else {
-            // Reset for agency pickup
+            toast.info('Agency pickup selected. No delivery fee.', 'Delivery Option');
             setDistance(0);
             setDeliveryLocation(null);
             setCalculatingDistance(false);
@@ -314,19 +339,25 @@ export default function RentalModal({
         const validation = canCreateReservation();
 
         if (!validation.valid) {
-            alert(validation.message);
+            toast.warning(validation.message, 'Validation Error');
             return;
         }
 
         setIsCreatingReservation(true);
+        toast.info('Creating your reservation...', 'Please Wait');
 
         try {
+            const pickupTypeMap = {
+                'agency pickup': 'pickup',
+                'home delivery': 'delivery'
+            };
+
             const reservationData = {
                 agency_id: agency?.id,
                 vehicle_id: vehicle?.id,
                 pickup_date: startDate.toISOString(),
                 return_date: endDate.toISOString(),
-                pickup_type: deliveryOption === 'agency pickup' ? 'self pickup' : 'delivery',
+                pickup_type: pickupTypeMap[deliveryOption] || 'pickup',
                 delevry_coordinations: deliveryOption === 'home delivery' && deliveryLocation
                     ? JSON.stringify(deliveryLocation)
                     : null,
@@ -337,8 +368,6 @@ export default function RentalModal({
                 discount_amount: 0,
                 equipment_cost: 0
             };
-
-            console.log('📤 Creating reservation:', reservationData);
 
             const response = await fetch('/api/reservation', {
                 method: 'POST',
@@ -355,21 +384,29 @@ export default function RentalModal({
                 throw new Error(data.message || 'Failed to create reservation');
             }
 
-            console.log('✅ Reservation created:', data);
             setReservation(data.data);
+            toast.success(
+                `Reservation #${data.data.reservation_number} created successfully!`,
+                'Success'
+            );
 
         } catch (err) {
-            console.error('❌ Reservation failed:', err);
-            alert(`Reservation failed: ${err.message}`);
+            toast.error(
+                err.message || 'An error occurred while creating the reservation',
+                'Reservation Failed'
+            );
         } finally {
             setIsCreatingReservation(false);
         }
     };
 
     // Handle payment success
-    const handlePaymentSuccess = (paymentData) => {
-        console.log('✅ Payment successful!', paymentData);
-        alert('Payment completed successfully! Your reservation is confirmed.');
+    const handlePaymentSuccess = () => {
+        toast.success(
+            'Payment completed successfully! Your reservation is confirmed.',
+            'Payment Successful',
+            7000
+        );
         onClose();
     };
 
@@ -390,7 +427,7 @@ export default function RentalModal({
                             <FaTimes className="text-xl" />
                         </button>
                     </div>
-                    
+
                     {/* Rental Period */}
                     <div className="mb-8">
                         <h3 className="text-lg font-semibold mb-4 flex items-center">
@@ -419,7 +456,7 @@ export default function RentalModal({
                                 <DatePicker
                                     selected={endDate}
                                     onChange={(date) => setEndDate(date)}
-                                    minDate={startDate || new Date()}
+                                    minDate={getNextDay(startDate)}
                                     customInput={<CustomDateInput
                                         placeholder="Select end date"
                                         disabled={!startDate}
@@ -452,8 +489,8 @@ export default function RentalModal({
                             <button
                                 onClick={() => handleDeliveryOptionChange('agency pickup')}
                                 className={`p-4 rounded-xl border-2 transition-all ${deliveryOption === 'agency pickup'
-                                    ? 'border-blue-500 bg-blue-50 shadow-md ring-2 ring-blue-200'
-                                    : 'border-gray-200 hover:border-blue-300 hover:shadow-sm'
+                                        ? 'border-blue-500 bg-blue-50 shadow-md ring-2 ring-blue-200'
+                                        : 'border-gray-200 hover:border-blue-300 hover:shadow-sm'
                                     }`}
                             >
                                 <div className="flex items-center">
@@ -479,8 +516,8 @@ export default function RentalModal({
                                 onClick={() => handleDeliveryOptionChange('home delivery')}
                                 disabled={!isHomeDeliveryAvailable}
                                 className={`p-4 rounded-xl border-2 transition-all ${deliveryOption === 'home delivery'
-                                    ? 'border-green-500 bg-green-50 shadow-md ring-2 ring-green-200'
-                                    : 'border-gray-200 hover:border-green-300 hover:shadow-sm'
+                                        ? 'border-green-500 bg-green-50 shadow-md ring-2 ring-green-200'
+                                        : 'border-gray-200 hover:border-green-300 hover:shadow-sm'
                                     } ${!isHomeDeliveryAvailable ? 'opacity-50 cursor-not-allowed' : ''}`}
                             >
                                 <div className="flex items-center">

@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppContext } from "./Context/AppContext";
 import { useContext } from "react";
-
+import { ToastProvider } from './Components/Toast/ToastContainer';
 
 import Layout from "./Pages/Layout";
 import Home from "./Pages/Client/Home";
@@ -37,108 +37,111 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Home />} />
+      <ToastProvider>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Home />} />
 
-          <Route path="register" element={user ? <Home /> : <Register />} />
-          <Route path="login" element={user ? <Home /> : <Login />} />
-          <Route path="vehicles" element={<Vehicles />} />
+            <Route path="register" element={user ? <Home /> : <Register />} />
+            <Route path="login" element={user ? <Home /> : <Login />} />
+            <Route path="vehicles" element={<Vehicles />} />
 
-          {/* <Route path="create" element={user ? <Create /> : <Login />} /> */}
+            {/* <Route path="create" element={user ? <Create /> : <Login />} /> */}
 
-          <Route path="posts">
-            <Route path=":id" element={<VehicleDetailPage />} />
-            {/* <Route path="update/:id" element={user ? <Update /> : <Login />} /> */}
+            <Route path="posts">
+              <Route path=":id" element={<VehicleDetailPage />} />
+              {/* <Route path="update/:id" element={user ? <Update /> : <Login />} /> */}
+            </Route>
+
+
+            <Route path="admin" element={user ? <AdminDashboard /> : <Login />}>
+            </Route>
+
+            <Route path="error" element={<div>Error: Unauthorized Access</div>} />
+
+            <Route
+              path="manager/new-agency"
+              element={
+                user
+                  ? user.roles[0].name === "agency manager"
+                    ? <CreateAgency />
+                    : <Navigate to="/error" />
+                  : <Login />
+              }
+            />
+
           </Route>
 
 
-          <Route path="admin" element={user ? <AdminDashboard /> : <Login />}>
+
+          {/* Manager Routes : */}
+          <Route path="manager" element={user ? <ManagerLayout /> : <Login />}>
+
+            <Route
+              index
+              path="dashboard"
+              element={
+                user
+                  ? user.roles[0].name === "agency manager"
+                    ? <Dashboard />
+                    : <Navigate to="/error" />
+                  : <Login />
+              }
+            />
+
+            <Route
+              path="posts"
+              element={
+                user
+                  ? user.roles[0].name === "agency manager"
+                    ? <PostsList />
+                    : <Navigate to="/error" />
+                  : <Login />
+              }
+            />
+
+            <Route path="post">
+              <Route path="create" element={<PostCreate />} />
+              <Route path=":id" element={<PostView />} />
+              <Route path="edit/:id" element={<PostEdit />} />
+            </Route>
+
+            <Route
+              path="vehicles"
+              element={
+                user
+                  ? user.roles[0].name === "agency manager"
+                    ? <AgencyVehicles />
+                    : <Navigate to="/error" />
+                  : <Login />
+              }
+            />
+
+
+
+            <Route path="vehicle">
+              <Route path="create" element={<VehicleCreate />} />
+            </Route>
+
+            <Route
+              path="profile"
+              element={
+                user
+                  ? user.roles[0].name === "agency manager"
+                    ? <AgencyManagerProfile />
+                    : <Navigate to="/error" />
+                  : <Login />
+              }
+            />
+
+
+
           </Route>
 
-          <Route path="error" element={<div>Error: Unauthorized Access</div>} />
 
-          <Route
-            path="manager/new-agency"
-            element={
-              user
-                ? user.roles[0].name === "agency manager"
-                  ? <CreateAgency />
-                  : <Navigate to="/error" />
-                : <Login />
-            }
-          />
+        </Routes>
+      </ToastProvider>
 
-        </Route>
-
-
-
-        {/* Manager Routes : */}
-        <Route path="manager" element={user ? <ManagerLayout /> : <Login />}>
-
-          <Route
-            index
-            path="dashboard"
-            element={
-              user
-                ? user.roles[0].name === "agency manager"
-                  ? <Dashboard />
-                  : <Navigate to="/error" />
-                : <Login />
-            }
-          />
-
-          <Route
-            path="posts"
-            element={
-              user
-                ? user.roles[0].name === "agency manager"
-                  ? <PostsList />
-                  : <Navigate to="/error" />
-                : <Login />
-            }
-          />
-
-          <Route path="post">
-            <Route path="create" element={<PostCreate />} />
-            <Route path=":id" element={<PostView />} />
-            <Route path="edit/:id" element={<PostEdit />} />
-          </Route>
-
-          <Route
-            path="vehicles"
-            element={
-              user
-                ? user.roles[0].name === "agency manager"
-                  ? <AgencyVehicles />
-                  : <Navigate to="/error" />
-                : <Login />
-            }
-          />
-
-
-
-          <Route path="vehicle">
-            <Route path="create" element={<VehicleCreate />} />
-          </Route>
-
-          <Route
-            path="profile"
-            element={
-              user
-                ? user.roles[0].name === "agency manager"
-                  ? <AgencyManagerProfile />
-                  : <Navigate to="/error" />
-                : <Login />
-            }
-          />
-
-
-
-        </Route>
-
-
-      </Routes>
     </BrowserRouter>
   );
 }

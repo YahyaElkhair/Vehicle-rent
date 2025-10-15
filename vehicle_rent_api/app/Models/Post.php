@@ -21,12 +21,8 @@ class Post extends Model
         'view_count',
         'rental_count',
         'average_rating',
-        'five_star_count',
-        'four_star_count',
-        'three_star_count',
-        'two_star_count',
-        'one_star_count',
         'total_reviews',
+        'rating_distribution', // ✅ New JSON column
         'slug',
         'meta_title',
         'meta_description'
@@ -35,22 +31,20 @@ class Post extends Model
     protected $casts = [
         'status' => 'string',
         'delivery_options' => 'array',
+        'rating_distribution' => 'array', // ✅ Cast to array
         'min_driver_age' => 'integer',
         'min_license_years' => 'integer',
         'view_count' => 'integer',
         'rental_count' => 'integer',
-        'average_rating' => 'decimal:1',
-        'five_star_count' => 'integer',
-        'four_star_count' => 'integer',
-        'three_star_count' => 'integer',
-        'two_star_count' => 'integer',
-        'one_star_count' => 'integer',
+        'average_rating' => 'decimal:2', // ✅ Changed to 2 decimals
         'total_reviews' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
-        // 'deleted_at' => 'datetime'
     ];
 
+    protected $appends = ['rating_breakdown']; // ✅ Auto-append to JSON
+
+    // ✅ Relationships
     public function agency()
     {
         return $this->belongsTo(Agency::class);
@@ -66,19 +60,104 @@ class Post extends Model
         return $this->hasMany(Comment::class)->latest();
     }
 
+    public function ratings()
+    {
+        return $this->hasMany(Comment::class)->whereNotNull('rating');
+    }
+
     public function advertisements()
     {
         return $this->hasMany(Advertisement::class);
     }
 
-    // 🔹 Scope: status
+    // ✅ Accessor: Get formatted rating breakdown for frontend
+    public function getRatingBreakdownAttribute()
+    {
+        $distribution = $this->rating_distribution ?? [];
+
+        return [
+            'average' => (float) $this->average_rating,
+            'total' => $this->total_reviews,
+            'stars' => [
+                5 => $distribution['5'] ?? 0,
+                4 => $distribution['4'] ?? 0,
+                3 => $distribution['3'] ?? 0,
+                2 => $distribution['2'] ?? 0,
+                1 => $distribution['1'] ?? 0,
+            ],
+            'percentages' => $this->calculatePercentages($distribution),
+        ];
+    }
+
+    // ✅ Calculate percentages for rating bars
+    private function calculatePercentages($distribution)
+    {
+        if ($this->total_reviews == 0) {
+            return [5 => 0, 4 => 0, 3 => 0, 2 => 0, 1 => 0];
+        }
+
+        $percentages = [];
+        foreach ([5, 4, 3, 2, 1] as $star) {
+            $count = $distribution[$star] ?? 0;
+            $percentages[$star] = round(($count / $this->total_reviews) * 100, 1);
+        }
+
+        return $percentages;
+    }
+
+    // ✅ Check if user has already commented/rated
+    public function hasUserCommented($userId)
+    {
+        return $this->comments()->where('user_id', $userId)->exists();
+    }
+
+    // ✅ Get user's comment
+    public function getUserComment($userId)
+    {
+        return $this->comments()->where('user_id', $userId)->first();
+    }
+
+    // ✅ Update rating statistics (called automatically by Comment model)
+    public function updateRatingStats()
+    {
+        $ratings = $this->comments()
+            ->whereNotNull('rating')
+            ->pluck('rating');
+
+        if ($ratings->isEmpty()) {
+            $this->update([
+                'average_rating' => 0.00,
+                'total_reviews' => 0,
+                'rating_distribution' => null,
+            ]);
+            return;
+        }
+
+        // Calculate distribution
+        $distribution = [
+            '5' => $ratings->filter(fn($r) => $r == 5)->count(),
+            '4' => $ratings->filter(fn($r) => $r == 4)->count(),
+            '3' => $ratings->filter(fn($r) => $r == 3)->count(),
+            '2' => $ratings->filter(fn($r) => $r == 2)->count(),
+            '1' => $ratings->filter(fn($r) => $r == 1)->count(),
+        ];
+
+        $this->update([
+            'average_rating' => round($ratings->avg(), 2),
+            'total_reviews' => $ratings->count(),
+            'rating_distribution' => $distribution,
+        ]);
+    }
+
+    // ✅ SCOPES
+
+    // 🔹 Scope: vehicle status
     public function scopeVehicleStatus($query, $status)
     {
         return $query->whereHas('vehicle', function ($q) use ($status) {
             $q->where('status', $status);
         });
     }
-
 
     // 🔹 Scope: min driver age
     public function scopeMinDriverAge($query, $age)
@@ -100,7 +179,7 @@ class Post extends Model
         });
     }
 
-    // 🔹 Scope: vehicle
+    // 🔹 Scope: vehicle brand
     public function scopeByVehicleBrand($query, $brand)
     {
         return $query->whereHas('vehicle', function ($q) use ($brand) {
@@ -111,13 +190,13 @@ class Post extends Model
     // 🔹 Scope: popular
     public function scopePopular($query, $minViews = 100)
     {
-        return $query->where('view_count', '>=', $minViews)->orderby('view_count', 'desc');
+        return $query->where('view_count', '>=', $minViews)->orderBy('view_count', 'desc');
     }
 
     // 🔹 Scope: delivery option
     public function scopeDeliveryOption($query, $option)
     {
-        return $query->where('delivery_options', $option);
+        return $query->whereJsonContains('delivery_options', $option);
     }
 
     // 🔹 Scope: search keyword
@@ -125,7 +204,11 @@ class Post extends Model
     {
         return $query->where(function ($q) use ($keyword) {
             $q->where('title', 'like', "%$keyword%")
-                ->orWhere('description', 'like', "%$keyword%");
+                ->orWhere('description', 'like', "%$keyword%")
+                ->orWhereHas('vehicle', function ($vq) use ($keyword) {
+                    $vq->where('brand', 'like', "%$keyword%")
+                        ->orWhere('model', 'like', "%$keyword%");
+                });
         });
     }
 
@@ -137,27 +220,12 @@ class Post extends Model
         });
     }
 
-    // 🔹 Scope: dynamic filter
-    public function scopeFilter($query, $filters)
+    // 🔹 Scope: minimum rating filter
+    public function scopeWithMinRating($query, $minRating)
     {
-        return $query
-            ->when($filters['vehicle_status'] ?? null, fn($q, $status) => $q->vehicleStatus($status))
-            ->when($filters['popular'] ?? null, fn($q, $minViews) => $q->popular($minViews))
-            ->when($filters['agency_name'] ?? null, fn($q, $agencyName) => $q->byAgencyName($agencyName))
-            ->when($filters['brand'] ?? null, fn($q, $brand) => $q->byVehicleBrand($brand))
-            ->when($filters['vehicle_age'] ?? null, fn($q, $age) => $q->byVehicleAge($age))
-            ->when($filters['license'] ?? null, fn($q, $years) => $q->minLicenseYears($years))
-            ->when($filters['delivery'] ?? null, fn($q, $delivery) => $q->deliveryOption($delivery))
-            ->when($filters['search'] ?? null, fn($q, $s) => $q->search($s))
-            ->when(isset($filters['min']) && isset($filters['max']), fn($q) => $q->priceBetween($filters['min'], $filters['max']));
+        return $query->where('average_rating', '>=', $minRating)
+            ->where('total_reviews', '>', 0);
     }
-
-    // 🔹 Scope: sorting
-    public function scopeSortBy($query, $field = 'created_at', $direction = 'desc')
-    {
-        return $query->orderBy($field, $direction);
-    }
-
 
     // 🔹 Scope: vehicle age
     public function scopeByVehicleAge($query, $age)
@@ -172,13 +240,11 @@ class Post extends Model
         } elseif ($age === '3') {
             // Young: 1-3 years
             return $query->whereHas('vehicle', function ($q) use ($currentYear) {
-                // Corrected: Lower bound = currentYear-3, Upper bound = currentYear-1
                 $q->whereBetween('year', [$currentYear - 3, $currentYear - 1]);
             });
         } elseif ($age === '5') {
             // Mature: 3-5 years
             return $query->whereHas('vehicle', function ($q) use ($currentYear) {
-                // Corrected: Lower bound = currentYear-5, Upper bound = currentYear-3
                 $q->whereBetween('year', [$currentYear - 5, $currentYear - 3]);
             });
         } elseif ($age === '5+') {
@@ -194,53 +260,26 @@ class Post extends Model
             });
         }
     }
-    public function scopeWithRatingStats($query)
+
+    // 🔹 Scope: dynamic filter
+    public function scopeFilter($query, $filters)
     {
-        return $query->withCount([
-            'comments as total_reviews',
-            'comments as five_star_count' => function ($q) {
-                $q->where('rating', 5);
-            },
-            'comments as four_star_count' => function ($q) {
-                $q->where('rating', 4);
-            },
-            'comments as three_star_count' => function ($q) {
-                $q->where('rating', 3);
-            },
-            'comments as two_star_count' => function ($q) {
-                $q->where('rating', 2);
-            },
-            'comments as one_star_count' => function ($q) {
-                $q->where('rating', 1);
-            }
-        ]);
+        return $query
+            ->when($filters['vehicle_status'] ?? null, fn($q, $status) => $q->vehicleStatus($status))
+            ->when($filters['popular'] ?? null, fn($q, $minViews) => $q->popular($minViews))
+            ->when($filters['agency_name'] ?? null, fn($q, $agencyName) => $q->byAgencyName($agencyName))
+            ->when($filters['brand'] ?? null, fn($q, $brand) => $q->byVehicleBrand($brand))
+            ->when($filters['vehicle_age'] ?? null, fn($q, $age) => $q->byVehicleAge($age))
+            ->when($filters['license'] ?? null, fn($q, $years) => $q->minLicenseYears($years))
+            ->when($filters['delivery'] ?? null, fn($q, $delivery) => $q->deliveryOption($delivery))
+            ->when($filters['search'] ?? null, fn($q, $s) => $q->search($s))
+            ->when($filters['min_rating'] ?? null, fn($q, $rating) => $q->withMinRating($rating))
+            ->when(isset($filters['min']) && isset($filters['max']), fn($q) => $q->priceBetween($filters['min'], $filters['max']));
     }
 
-    public function updateRatingStats()
+    // 🔹 Scope: sorting
+    public function scopeSortBy($query, $field = 'created_at', $direction = 'desc')
     {
-        // Use only non-deleted comments
-        $comments = $this->comments;
-
-        $this->total_reviews = $comments->count();
-
-        // Calculate star counts
-        $this->five_star_count = $comments->where('rating', 5)->count();
-        $this->four_star_count = $comments->where('rating', 4)->count();
-        $this->three_star_count = $comments->where('rating', 3)->count();
-        $this->two_star_count = $comments->where('rating', 2)->count();
-        $this->one_star_count = $comments->where('rating', 1)->count();
-
-        // Calculate average
-        $totalStars = $this->five_star_count * 5
-            + $this->four_star_count * 4
-            + $this->three_star_count * 3
-            + $this->two_star_count * 2
-            + $this->one_star_count * 1;
-
-        $this->average_rating = $this->total_reviews > 0
-            ? round($totalStars / $this->total_reviews, 1)
-            : 0;
-
-        $this->save();
+        return $query->orderBy($field, $direction);
     }
 }

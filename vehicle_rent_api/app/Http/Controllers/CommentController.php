@@ -30,23 +30,35 @@ class CommentController extends Controller
      */
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'content' => 'nullable|string|max:1000',
-            'post_id' => 'required|exists:posts,id',
-            'rating' => 'required|integer|between:1,5'
-        ]);
+        try {
+            $validated = $request->validate([
+                'content' => 'nullable|string|max:1000',
+                'post_id' => 'required|exists:posts,id',
+                'rating' => 'required|integer|between:1,5'
+            ]);
 
-        $validated['user_id'] = $request->user()->id;
-        $comment = Comment::create($validated);
+            $validated['user_id'] = $request->user()->id;
+            $comment = Comment::create($validated);
 
-        // Update post rating stats
-        $post = Post::find($validated['post_id']);
-        $post->updateRatingStats();
+            // Update post rating stats
+            $post = Post::find($validated['post_id']);
+            $post->updateRatingStats();
 
-        return response()->json([
-            'message' => 'Review submitted successfully',
-            'comment' => $comment->load('user')
-        ], 201);
+            return response()->json([
+                'message' => 'Review submitted successfully',
+                'comment' => $comment->load('user')
+            ], 201);
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($e->errorInfo[1] == 1062) {
+                return response()->json([
+                    'message' => 'Each user can have one comment per post!'
+                ], 422);
+            }
+            return response()->json([
+                'error' => 'Database error',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**

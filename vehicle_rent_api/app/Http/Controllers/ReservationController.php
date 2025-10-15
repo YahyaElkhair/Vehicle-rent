@@ -42,7 +42,7 @@ class ReservationController extends Controller
             'vehicle_id' => 'required|exists:vehicles,id',
             'pickup_date' => 'required|date|after_or_equal:' . now()->toDateString(),
             'return_date' => 'required|date|after:pickup_date',
-            'pickup_type' => 'nullable|in:self pickup,delivery',
+            'pickup_type' => 'nullable|in:pickup,delivery',  // FIXED: Changed to match ENUM
             'pickup_coordinations' => 'nullable',
             'delevry_coordinations' => 'nullable',
             'return_coordinations' => 'nullable',
@@ -56,8 +56,9 @@ class ReservationController extends Controller
         ]);
 
         $validated['reservation_number'] = 'RES-' . Str::upper(Str::random(8));
+        $validated['client_id'] = $request->user()->id;
 
-        $reservation = $request->user()->reservations()->create($validated);
+        $reservation = Reservation::create($validated);
 
         return response()->json([
             'message' => 'Reservation created successfully',
@@ -185,5 +186,4 @@ class ReservationController extends Controller
 
         return response()->json($reservations);
     }
-
 }

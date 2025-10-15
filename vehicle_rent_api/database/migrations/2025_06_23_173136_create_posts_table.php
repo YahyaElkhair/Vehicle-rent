@@ -15,16 +15,16 @@ return new class extends Migration
             $table->id();
             $table->foreignId('agency_id')->constrained('agencies')->onDelete('cascade');
             $table->foreignId('vehicle_id')->unique()->constrained('vehicles')->onDelete('cascade');
-            
+
             // Post details
             $table->string('title');
             $table->text('description');
             $table->enum('status', ['draft', 'published'])->default('draft');
-            
-            
+
+
             // delevry options
             $table->json('delivery_options')->default(json_encode(['agency pickup']));
-            
+
             // Requirements
             $table->unsignedInteger('min_driver_age')->default(21);
             $table->unsignedInteger('min_license_years')->default(2);
@@ -32,14 +32,11 @@ return new class extends Migration
             // Statistics
             $table->unsignedInteger('view_count')->default(0);
             $table->unsignedInteger('rental_count')->default(0);
-            // Rating columns in your migration
-            $table->decimal('average_rating', 3, 1)->default(0.0)->comment('1.0 to 5.0 with 0.5 increments');
-            $table->unsignedInteger('five_star_count')->default(0);
-            $table->unsignedInteger('four_star_count')->default(0);
-            $table->unsignedInteger('three_star_count')->default(0);
-            $table->unsignedInteger('two_star_count')->default(0);
-            $table->unsignedInteger('one_star_count')->default(0);
+
+            $table->decimal('average_rating', 3, 2)->default(0.00)->comment('0.00 to 5.00');
             $table->unsignedInteger('total_reviews')->default(0);
+
+            $table->json('rating_distribution')->nullable();
 
             // SEO
             $table->string('slug')->unique();
@@ -47,13 +44,12 @@ return new class extends Migration
             $table->text('meta_description')->nullable();
             $table->text('tags')->nullable();
 
-            
+
             $table->timestamps();
             // $table->softDeletes();
-            
+
             // Indexes
             $table->index(['agency_id', 'status']);
-
         });
     }
 

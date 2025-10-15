@@ -17,10 +17,19 @@ class PostController extends Controller
         $this->middleware('auth:sanctum')->except(['index', 'show']);
     }
 
+
     public function index(Request $request)
     {
         try {
-            // Handle sorting parameters first
+            // Validate incoming parameters
+            $validated = $request->validate([
+                'sort_by' => 'sometimes|string|in:created_at,price,rating,popularity,year,mileage',
+                'order' => 'sometimes|string|in:asc,desc',
+                'per_page' => 'sometimes|integer|min:1|max:100',
+                'min_rating' => 'sometimes|numeric|min:0|max:5',
+            ]);
+
+            // Handle sorting parameters
             $sortBy = $request->get('sort_by', 'created_at');
             $order = $request->get('order', 'desc');
 
@@ -38,13 +47,13 @@ class PostController extends Controller
                 'delivery',
                 'search',
                 'min',
-                'max'
+                'max',
+                'min_rating' // ✅ Added rating filter
             ]));
 
             // Handle sorting BEFORE eager loading
             switch ($sortBy) {
                 case 'price':
-                    // Use orderBy with subquery
                     $query->orderBy(
                         DB::table('vehicles')
                             ->select('price_per_day')
@@ -55,7 +64,9 @@ class PostController extends Controller
                     break;
 
                 case 'rating':
-                    $query->orderBy('average_rating', $order);
+                    // ✅ Sort by rating, then by review count
+                    $query->orderBy('average_rating', $order)
+                        ->orderBy('total_reviews', $order);
                     break;
 
                 case 'popularity':
@@ -136,15 +147,39 @@ class PostController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $posts->items(),
-                'total' => $posts->total(),
-                'per_page' => $posts->perPage(),
-                'current_page' => $posts->currentPage(),
-                'last_page' => $posts->lastPage(),
-                'from' => $posts->firstItem(),
-                'to' => $posts->lastItem()
+                'meta' => [
+                    'total' => $posts->total(),
+                    'per_page' => $posts->perPage(),
+                    'current_page' => $posts->currentPage(),
+                    'last_page' => $posts->lastPage(),
+                    'from' => $posts->firstItem(),
+                    'to' => $posts->lastItem(),
+                ],
+                'filters' => [
+                    'sort_by' => $sortBy,
+                    'order' => $order,
+                    'applied' => $request->only([
+                        'popular',
+                        'agency_name',
+                        'brand',
+                        'vehicle_status',
+                        'vehicle_age',
+                        'license',
+                        'delivery',
+                        'search',
+                        'min',
+                        'max',
+                        'min_rating'
+                    ])
+                ]
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
-
 
             return response()->json([
                 'success' => false,

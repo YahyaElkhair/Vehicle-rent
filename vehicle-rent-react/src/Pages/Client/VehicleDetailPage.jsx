@@ -12,6 +12,7 @@ import {
 import { AppContext } from '../../Context/AppContext';
 
 import RentModal from '../../Components/RentModal';
+import { useToast } from '../../Components/Toast/ToastContainer';
 
 
 export default function VehicleDetailPage() {
@@ -28,6 +29,7 @@ export default function VehicleDetailPage() {
     const [refreshCount, setRefreshCount] = useState(0);
     const [deletingCommentId, setDeletingCommentId] = useState(null);
     const [showRentModal, setShowRentModal] = useState(false);
+    const toast = useToast();
 
     const fetchPost = useCallback(async () => {
         try {
@@ -125,8 +127,11 @@ export default function VehicleDetailPage() {
             setRefreshCount(prev => prev + 1);
             setNewReview({ rating: 5, comment: '' });
         } catch (err) {
-            console.error('Rating submission error:', err);
-            alert(err.message || 'Failed to submit rating. Please try again.');
+            toast.error(
+                err.message || 'Failed to submit rating',
+                'Commenting error',
+                7000
+            );
         } finally {
             setSubmitting(false);
         }
@@ -214,7 +219,7 @@ export default function VehicleDetailPage() {
     const comments = post.comments || [];
     const deliveryOptions = post.delivery_options || [];
     console.log(deliveryOptions);
-    
+
     // Calculate discounted prices
     const originalDailyPrice = vehicle.price_per_day ?
         parseFloat(vehicle.price_per_day) / (1 - parseFloat(vehicle.discount_rate || 0) / 100) :
@@ -777,25 +782,31 @@ export default function VehicleDetailPage() {
 
                         <div className="w-full md:w-auto">
                             <div className="space-y-2">
-                                {[5, 4, 3, 2, 1].map((star) => (
-                                    <div key={star} className="flex items-center">
-                                        <div className='flex items-center text-gray-600 text-sm mr-2'>
-                                            <span className="w-10">{star} star</span>
-                                        </div>
+                                {[5, 4, 3, 2, 1].map((star) => {
+                                    // ✅ Get data from rating_breakdown instead of individual columns
+                                    const starCount = post.rating_breakdown?.stars?.[star] || 0;
+                                    const percentage = post.rating_breakdown?.percentages?.[star] || 0;
 
-                                        <div className="w-40 h-2 bg-gray-200 rounded-full mx-2 overflow-hidden">
-                                            <div
-                                                className="h-full bg-yellow-500"
-                                                style={{
-                                                    width: `${(post[`${star}_star_count`] / (post.total_reviews || 1)) * 100 || 0}%`
-                                                }}
-                                            ></div>
+                                    return (
+                                        <div key={star} className="flex items-center">
+                                            <div className='flex items-center text-gray-600 text-sm mr-2'>
+                                                <span className="w-10">{star} star</span>
+                                            </div>
+
+                                            <div className="w-40 h-2 bg-gray-200 rounded-full mx-2 overflow-hidden">
+                                                <div
+                                                    className="h-full bg-yellow-500 transition-all duration-300"
+                                                    style={{
+                                                        width: `${percentage}%`
+                                                    }}
+                                                ></div>
+                                            </div>
+                                            <span className="text-gray-600 text-sm w-10">
+                                                {starCount}
+                                            </span>
                                         </div>
-                                        <span className="text-gray-600 text-sm w-10">
-                                            {post[`${star}_star_count`] || 0}
-                                        </span>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>
