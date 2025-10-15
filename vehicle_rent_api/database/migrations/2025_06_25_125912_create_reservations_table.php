@@ -27,7 +27,7 @@ return new class extends Migration
             $table->dateTime('pickup_date');
             $table->dateTime('return_date');
 
-            $table->enum('pickup_type', ['agency pickup', 'home delivery'])->default('agency pickup');
+            $table->enum('pickup_type', ['pickup', 'delivery'])->default('pickup')->change();
             $table->json('pickup_coordinations')->nullable();
             $table->json('delevry_coordinations')->nullable();
             $table->json('return_coordinations')->nullable();

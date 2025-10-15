@@ -25,7 +25,10 @@ Route::apiResource('comment', CommentController::class);
 Route::apiResource('advertisements', AdvertisementController::class);
 Route::apiResource('payments', PaymentController::class);
 
+Route::middleware('auth:sanctum')->group(function () {
 
+    Route::patch('/reservations/{id}/status', [ReservationController::class, 'updateStatus']);
+});
 
 Route::controller(AuthController::class)->group(function () {
     Route::post('/register', 'register')->name('auth.register');

@@ -6,6 +6,7 @@ use App\Models\Payment;
 use App\Models\Reservation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
 
 class PaymentController extends Controller
 {
@@ -22,75 +23,114 @@ class PaymentController extends Controller
 
     public function store(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'reservation_id' => 'required|exists:reservations,id',
-            'amount' => 'required|numeric|min:0.01',
-            'currency' => 'required|string|size:3',
-            'transaction_id' => 'required|string',
-            'details' => 'sometimes|array'
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
         try {
-            // Check if reservation exists
-            $reservation = Reservation::findOrFail($request->reservation_id);
-
-            // Create payment
-            $payment = Payment::create([
-                'reservation_id' => $request->reservation_id,
-                'payment_method' => 'paypal',
-                'amount' => $request->amount,
-                'currency' => strtoupper($request->currency),
-                'status' => Payment::STATUS_COMPLETED,
-                'transaction_id' => $request->transaction_id,
-                'details' => $request->details ?? []
+            $validated = $request->validate([
+                'reservation_id' => 'required|exists:reservations,id',
+                'payment_method' => 'required|in:credit_card,paypal,cash',
+                'amount' => 'required|numeric|min:0',
+                'currency' => 'string|max:3',
+                'status' => 'required|in:CREATED,COMPLETED,APPROVED,FAILED,REFUNDED',
+                'transaction_id' => 'nullable|string',
+                'details' => 'nullable|array'
             ]);
 
-            // Update reservation status
-            $reservation->update(['status' => 'confirmed']);
+            // Start transaction
+            DB::beginTransaction();
+
+            // Create payment
+            $payment = Payment::create($validated);
+
+            // Update reservation status based on payment method
+            $reservation = Reservation::find($validated['reservation_id']);
+
+            if ($validated['payment_method'] === 'cash') {
+                // For cash payments, set status to confirmed (waiting for payment at pickup)
+                $reservation->update(['status' => 'confirmed']);
+            } elseif (in_array($validated['status'], ['COMPLETED', 'APPROVED'])) {
+                // For online payments that are completed, set to paid
+                $reservation->update(['status' => 'paid']);
+            }
+
+            DB::commit();
 
             return response()->json([
+                'success' => true,
                 'message' => 'Payment created successfully',
-                'data' => $payment
+                'data' => $payment->load('reservation')
             ], 201);
-        } catch (\Exception $e) {
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
             return response()->json([
-                'message' => 'Payment creation failed',
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create payment',
                 'error' => $e->getMessage()
             ], 500);
         }
     }
 
+    /**
+     * Get payment details
+     */
     public function show($id)
     {
-        return Payment::with('reservation')->findOrFail($id);
+        try {
+            $payment = Payment::with('reservation')->findOrFail($id);
+
+            return response()->json([
+                'success' => true,
+                'data' => $payment
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Payment not found'
+            ], 404);
+        }
     }
 
-    public function update(Request $request, $id)
+    public function updateStatus(Request $request, $id)
     {
-        $payment = Payment::findOrFail($id);
+        try {
+            $validated = $request->validate([
+                'status' => 'required|in:CREATED,COMPLETED,APPROVED,FAILED,REFUNDED',
+                'details' => 'nullable|array'
+            ]);
 
-        $validator = Validator::make($request->all(), [
-            'status' => 'sometimes|in:CREATED,COMPLETED,APPROVED,FAILED,REFUNDED',
-            'details' => 'sometimes|array'
-        ]);
+            $payment = Payment::findOrFail($id);
 
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
+            DB::beginTransaction();
+
+            $payment->update($validated);
+
+            // Update reservation status if payment is completed
+            if (in_array($validated['status'], ['COMPLETED', 'APPROVED'])) {
+                $payment->reservation->update(['status' => 'paid']);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment status updated',
+                'data' => $payment->fresh()
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update payment status',
+                'error' => $e->getMessage()
+            ], 500);
         }
-
-        $payment->update($request->only(['status', 'details']));
-
-        return response()->json([
-            'message' => 'Payment updated successfully',
-            'data' => $payment
-        ]);
     }
 
     public function destroy($id)
@@ -117,6 +157,4 @@ class PaymentController extends Controller
 
         return response()->json($payments);
     }
-
-    
 }

@@ -163,6 +163,16 @@ export default function VehicleDetailPage() {
             setDeletingCommentId(null);
         }
     };
+    useEffect(() => {
+        if (showRentModal) {
+            document.body.style.overflow = 'hidden';
+
+            // Cleanup function
+            return () => {
+            document.body.style.overflow = 'scroll';
+            };
+        }
+    }, [showRentModal]);
 
     if (loading) {
         return (
@@ -174,7 +184,7 @@ export default function VehicleDetailPage() {
 
     if (error) {
         return (
-            <div className="max-w-7xl mx-auto px-4 py-12">
+            <div className="max-w-7xl mx-auto px-4 py-12 ">
                 <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded">
                     <div className="flex">
                         <div className="flex-shrink-0">
@@ -234,7 +244,7 @@ export default function VehicleDetailPage() {
         null;
 
     return (
-        <div className="max-w-7xl mx-auto px-4 py-8 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
+        <div className="max-w-7xl mx-auto px-4 py-8 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen ">
             <div className="mb-6">
                 <Link to="/vehicles" className="text-blue-600 hover:text-blue-800 flex items-center font-medium">
                     <FaChevronLeft className="mr-2" /> Back to Vehicles
@@ -881,8 +891,7 @@ export default function VehicleDetailPage() {
                     agency={agency}
                     deliveryOptions={deliveryOptions}
                     onClose={() => setShowRentModal(false)}
-                    onConfirm={(rentalData) => {
-                        console.log('Rental confirmed:', rentalData);
+                    onConfirm={() => {
                         setShowRentModal(false);
                     }}
                 />

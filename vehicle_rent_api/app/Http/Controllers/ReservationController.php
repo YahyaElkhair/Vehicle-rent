@@ -9,7 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Illuminate\Support\Facades\DB;
 
 class ReservationController extends Controller
 {
@@ -110,7 +110,8 @@ class ReservationController extends Controller
             'delivery_fee' => 'sometimes|numeric|min:0',
             'final_amount' => 'sometimes|numeric|min:0',
             'additional_equipment' => 'sometimes|json',
-            'equipment_cost' => 'sometimes|numeric|min:0'
+            'equipment_cost' => 'sometimes|numeric|min:0',
+            'status' => 'required|in:pending,confirmed,paid,active,completed,cancelled,refunded'
         ]);
 
         $reservation->update($validated);
@@ -185,5 +186,98 @@ class ReservationController extends Controller
             ->get();
 
         return response()->json($reservations);
+    }
+
+    public function updateStatus(Request $request, $id): JsonResponse
+    {
+        try {
+            $reservation = Reservation::findOrFail($id);
+
+            // Authorization check
+            $user = Auth::user();
+            $isClient = $reservation->client_id === $user->id;
+            $isAgency = $user->agency_id && $user->agency_id === $reservation->agency_id;
+            $isAdmin = $user->hasRole('admin');
+
+            if (!$isClient && !$isAgency && !$isAdmin) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized to update this reservation'
+                ], 403);
+            }
+
+            $validated = $request->validate([
+                'status' => 'required|in:pending,confirmed,paid,active,completed,cancelled,refunded',
+                'cancellation_reason' => 'nullable|string|max:500',
+                'refund_amount' => 'nullable|numeric|min:0'
+            ]);
+
+            // Define valid status transitions
+            $allowedTransitions = [
+                'pending' => ['confirmed', 'cancelled'],
+                'confirmed' => ['paid', 'active', 'cancelled'],
+                'paid' => ['active', 'cancelled', 'refunded'],
+                'active' => ['completed', 'cancelled'],
+                'completed' => [],
+                'cancelled' => ['refunded'],
+                'refunded' => []
+            ];
+
+            $currentStatus = $reservation->status;
+            $newStatus = $validated['status'];
+
+            // Check if status transition is valid
+            if ($currentStatus !== $newStatus) {
+                if (
+                    !isset($allowedTransitions[$currentStatus]) ||
+                    !in_array($newStatus, $allowedTransitions[$currentStatus])
+                ) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Cannot change status from '{$currentStatus}' to '{$newStatus}'"
+                    ], 400);
+                }
+            }
+
+            DB::beginTransaction();
+
+            $updateData = ['status' => $validated['status']];
+
+            // Add cancellation reason if provided
+            if (isset($validated['cancellation_reason'])) {
+                $updateData['cancellation_reason'] = $validated['cancellation_reason'];
+            }
+
+            // Add refund amount if provided
+            if (isset($validated['refund_amount'])) {
+                $updateData['refund_amount'] = $validated['refund_amount'];
+            }
+
+            $reservation->update($updateData);
+
+            DB::commit();
+
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Reservation status updated successfully',
+                'data' => $reservation->fresh()
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update reservation status',
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+            ], 500);
+        }
     }
 }

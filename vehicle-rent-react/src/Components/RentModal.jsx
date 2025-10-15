@@ -1,6 +1,6 @@
 // src/components/RentalModal.jsx
 import { useState, useEffect, useCallback, useContext, useRef } from 'react';
-import { FaTimes, FaCalendarAlt, FaMapMarkerAlt, FaCar, FaRoute } from 'react-icons/fa';
+import { FaTimes, FaCalendarAlt, FaMapMarkerAlt, FaCar, FaRoute, FaMoneyBillWave, FaCreditCard } from 'react-icons/fa';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import Map from './Map';
@@ -30,6 +30,8 @@ export default function RentalModal({
     const [reservation, setReservation] = useState(null);
     const [isCreatingReservation, setIsCreatingReservation] = useState(false);
     const [calculatingDistance, setCalculatingDistance] = useState(false);
+    const [paymentMethod, setPaymentMethod] = useState('paypal');
+    const [isProcessingCashPayment, setIsProcessingCashPayment] = useState(false);
 
     const { token } = useContext(AppContext);
     const toast = useToast();
@@ -60,12 +62,8 @@ export default function RentalModal({
 
         if (typeof coords === 'string') {
             if (coords.trim().startsWith('{') || coords.trim().startsWith('[')) {
-                try {
-                    const parsed = JSON.parse(coords);
-                    return parseCoords(parsed);
-                } catch (e) {
-                    return defaultCoords;
-                }
+                const parsed = JSON.parse(coords);
+                return parseCoords(parsed);
             }
 
             const cleanCoords = coords.replace(/[[\]]/g, '').trim();
@@ -121,7 +119,7 @@ export default function RentalModal({
         const [lng1, lat1] = coords1;
         const [lng2, lat2] = coords2;
 
-        const R = 6371; // Earth's radius in km
+        const R = 6371;
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLng = (lng2 - lng1) * Math.PI / 180;
 
@@ -185,23 +183,17 @@ export default function RentalModal({
                 setDeliveryLocation(newLocation);
                 setLoadingLocation(false);
 
-                toast.success('Location retrieved successfully', 'Success');
-
-                // Calculate Haversine distance
                 const haversineDistance = calculateHaversineDistance(agencyCoords, newLocation);
 
-                // Clear any existing timeout
                 if (fallbackTimeoutRef.current) {
                     clearTimeout(fallbackTimeoutRef.current);
                 }
 
-                // Set fallback timeout - only if not already calculated
                 fallbackTimeoutRef.current = setTimeout(() => {
                     if (!hasCalculatedFallbackRef.current) {
                         setDistance(parseFloat(haversineDistance.toFixed(1)));
                         setCalculatingDistance(false);
                         hasCalculatedFallbackRef.current = true;
-                        toast.info(`Distance calculated: ${haversineDistance.toFixed(1)} km`, 'Route Distance');
                     }
                 }, 3000);
             },
@@ -238,7 +230,6 @@ export default function RentalModal({
     // Handle route calculation from Map
     const handleRouteCalculated = useCallback((routeInfo) => {
         if (routeInfo?.distance && deliveryOption === 'home delivery') {
-            // Clear fallback timeout since we got a route
             if (fallbackTimeoutRef.current) {
                 clearTimeout(fallbackTimeoutRef.current);
             }
@@ -250,13 +241,11 @@ export default function RentalModal({
             if (roundedDistance > 0 && roundedDistance < 10000) {
                 setDistance(roundedDistance);
                 setCalculatingDistance(false);
-                toast.success(`Route calculated: ${roundedDistance} km`, 'Distance Updated');
             } else {
                 setCalculatingDistance(false);
-                toast.warning('Invalid distance received, using fallback calculation', 'Distance Warning');
             }
         }
-    }, [deliveryOption, toast]);
+    }, [deliveryOption]);
 
     // Handle delivery location change
     const handleDeliveryLocationChange = useCallback((newLocation) => {
@@ -270,7 +259,6 @@ export default function RentalModal({
         setDeliveryOption(option);
 
         if (option === 'home delivery') {
-            toast.info('Home delivery selected. Please set your location.', 'Delivery Option');
             if (!userLocation) {
                 getUserLocation();
             } else {
@@ -278,7 +266,6 @@ export default function RentalModal({
                 hasCalculatedFallbackRef.current = false;
             }
         } else {
-            toast.info('Agency pickup selected. No delivery fee.', 'Delivery Option');
             setDistance(0);
             setDeliveryLocation(null);
             setCalculatingDistance(false);
@@ -400,14 +387,146 @@ export default function RentalModal({
         }
     };
 
-    // Handle payment success
-    const handlePaymentSuccess = () => {
-        toast.success(
-            'Payment completed successfully! Your reservation is confirmed.',
-            'Payment Successful',
-            7000
-        );
-        onClose();
+    // Handle cash payment
+    const handleCashPayment = async () => {
+        if (!reservation) {
+            toast.error('No reservation found', 'Error');
+            return;
+        }
+
+        setIsProcessingCashPayment(true);
+        toast.info('Processing cash payment...', 'Please Wait');
+
+        try {
+            const paymentData = {
+                reservation_id: reservation.id,
+                payment_method: 'cash',
+                amount: totalPrice,
+                currency: 'USD',
+                status: 'CREATED',
+                transaction_id: `CASH-${Date.now()}-${reservation.reservation_number}`,
+                details: {
+                    payment_type: 'cash',
+                    note: 'Payment will be collected at pickup/delivery',
+                    reservation_number: reservation.reservation_number,
+                    created_at: new Date().toISOString()
+                }
+            };
+
+            const response = await fetch('/api/payments', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(paymentData)
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Failed to process cash payment');
+            }
+
+            setTimeout(() => {
+                onClose();
+            }, 2000);
+
+        } catch (err) {
+            toast.error(
+                err.message || 'An error occurred while processing cash payment',
+                'Payment Failed'
+            );
+        } finally {
+            setIsProcessingCashPayment(false);
+        }
+    };
+
+    // Handle PayPal payment success
+    const handlePaymentSuccess = async (paymentDetails) => {
+        if (!reservation) {
+            toast.error('No reservation found', 'Error');
+            return;
+        }
+
+
+        try {
+            // Update reservation status to "paid"
+            const reservationResponse = await fetch(`/api/reservations/${reservation.id}/status`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    status: 'paid'
+                })
+            });
+
+            const reservationData = await reservationResponse.json();
+
+            if (!reservationResponse.ok) {
+                throw new Error(reservationData.message || 'Failed to update reservation status');
+            }
+
+            // Create/Update payment record with PayPal details
+            const paymentData = {
+                reservation_id: reservation.id,
+                payment_method: 'paypal',
+                amount: totalPrice,
+                currency: 'USD',
+                status: 'COMPLETED',
+                transaction_id: paymentDetails?.id || paymentDetails?.orderID || `PAYPAL-${Date.now()}`,
+                details: {
+                    payment_type: 'paypal',
+                    paypal_order_id: paymentDetails?.id || paymentDetails?.orderID,
+                    payer_id: paymentDetails?.payer?.payer_id,
+                    payer_email: paymentDetails?.payer?.email_address,
+                    payment_status: paymentDetails?.status,
+                    reservation_number: reservation.reservation_number,
+                    completed_at: new Date().toISOString(),
+                    ...paymentDetails
+                }
+            };
+
+            const paymentResponse = await fetch('/api/payments', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(paymentData)
+            });
+
+            const paymentResponseData = await paymentResponse.json();
+
+            if (!paymentResponse.ok) {
+                console.error('Payment record creation failed:', paymentResponseData);
+            }
+
+            toast.success(
+                'Payment completed successfully! Your reservation is confirmed.',
+                'Payment Successful',
+                7000
+            );
+
+            // Close modal after delay
+            setTimeout(() => {
+                onClose();
+            }, 2000);
+
+        } catch (err) {
+            console.error('Error updating reservation:', err);
+            toast.error(
+                err.message || 'Payment successful but failed to update reservation',
+                'Update Failed'
+            );
+
+            // Still close the modal as payment was successful
+            setTimeout(() => {
+                onClose();
+            }, 3000);
+        }
     };
 
     return (
@@ -489,8 +608,8 @@ export default function RentalModal({
                             <button
                                 onClick={() => handleDeliveryOptionChange('agency pickup')}
                                 className={`p-4 rounded-xl border-2 transition-all ${deliveryOption === 'agency pickup'
-                                        ? 'border-blue-500 bg-blue-50 shadow-md ring-2 ring-blue-200'
-                                        : 'border-gray-200 hover:border-blue-300 hover:shadow-sm'
+                                    ? 'border-blue-500 bg-blue-50 shadow-md ring-2 ring-blue-200'
+                                    : 'border-gray-200 hover:border-blue-300 hover:shadow-sm'
                                     }`}
                             >
                                 <div className="flex items-center">
@@ -516,8 +635,8 @@ export default function RentalModal({
                                 onClick={() => handleDeliveryOptionChange('home delivery')}
                                 disabled={!isHomeDeliveryAvailable}
                                 className={`p-4 rounded-xl border-2 transition-all ${deliveryOption === 'home delivery'
-                                        ? 'border-green-500 bg-green-50 shadow-md ring-2 ring-green-200'
-                                        : 'border-gray-200 hover:border-green-300 hover:shadow-sm'
+                                    ? 'border-green-500 bg-green-50 shadow-md ring-2 ring-green-200'
+                                    : 'border-gray-200 hover:border-green-300 hover:shadow-sm'
                                     } ${!isHomeDeliveryAvailable ? 'opacity-50 cursor-not-allowed' : ''}`}
                             >
                                 <div className="flex items-center">
@@ -658,6 +777,8 @@ export default function RentalModal({
                     {reservation ? (
                         <div className="mt-8">
                             <h3 className="text-xl font-bold mb-4 text-gray-800">Complete Payment</h3>
+
+                            {/* Reservation Details */}
                             <div className="bg-blue-50 rounded-xl p-5 mb-6 border border-blue-200">
                                 <h4 className="font-semibold mb-3 text-gray-800">Reservation Details</h4>
                                 <div className="space-y-2 text-sm">
@@ -676,11 +797,131 @@ export default function RentalModal({
                                 </div>
                             </div>
 
-                            <PayPalPayment
-                                totalPayment={totalPrice.toFixed(2)}
-                                reservation={reservation}
-                                onPaymentSuccess={handlePaymentSuccess}
-                            />
+                            {/* Payment Method Selection */}
+                            <div className="mb-6">
+                                <h4 className="font-semibold mb-3 text-gray-800">Select Payment Method</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {/* PayPal Option */}
+                                    <button
+                                        onClick={() => setPaymentMethod('paypal')}
+                                        className={`p-4 rounded-xl border-2 transition-all ${paymentMethod === 'paypal'
+                                            ? 'border-blue-500 bg-blue-50 shadow-md ring-2 ring-blue-200'
+                                            : 'border-gray-200 hover:border-blue-300 hover:shadow-sm'
+                                            }`}
+                                    >
+                                        <div className="flex items-center">
+                                            <div className={`mr-3 w-12 h-12 rounded-full flex items-center justify-center ${paymentMethod === 'paypal' ? 'bg-blue-500' : 'bg-blue-100'
+                                                }`}>
+                                                <FaCreditCard className={`text-xl ${paymentMethod === 'paypal' ? 'text-white' : 'text-blue-600'
+                                                    }`} />
+                                            </div>
+                                            <div className="text-left flex-1">
+                                                <h4 className="font-semibold text-gray-900">PayPal</h4>
+                                                <p className="text-sm text-gray-600 mt-1">
+                                                    Pay securely online
+                                                </p>
+                                                <p className="text-xs text-green-600 font-medium mt-1">
+                                                    ✓ Instant confirmation
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </button>
+
+                                    {/* Cash Option */}
+                                    <button
+                                        onClick={() => setPaymentMethod('cash')}
+                                        className={`p-4 rounded-xl border-2 transition-all ${paymentMethod === 'cash'
+                                            ? 'border-green-500 bg-green-50 shadow-md ring-2 ring-green-200'
+                                            : 'border-gray-200 hover:border-green-300 hover:shadow-sm'
+                                            }`}
+                                    >
+                                        <div className="flex items-center">
+                                            <div className={`mr-3 w-12 h-12 rounded-full flex items-center justify-center ${paymentMethod === 'cash' ? 'bg-green-500' : 'bg-green-100'
+                                                }`}>
+                                                <FaMoneyBillWave className={`text-xl ${paymentMethod === 'cash' ? 'text-white' : 'text-green-600'
+                                                    }`} />
+                                            </div>
+                                            <div className="text-left flex-1">
+                                                <h4 className="font-semibold text-gray-900">Cash Payment</h4>
+                                                <p className="text-sm text-gray-600 mt-1">
+                                                    Pay at pickup/delivery
+                                                </p>
+                                                <p className="text-xs text-orange-600 font-medium mt-1">
+                                                    ⓘ Pay when you collect
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Payment Component Based on Selection */}
+                            {paymentMethod === 'paypal' ? (
+                                <PayPalPayment
+                                    totalPayment={totalPrice.toFixed(2)}
+                                    reservation={reservation}
+                                    onPaymentSuccess={handlePaymentSuccess}
+                                />
+                            ) : (
+                                <div className="space-y-4">
+                                    {/* Cash Payment Information */}
+                                    <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-5">
+                                        <div className="flex items-start">
+                                            <FaMoneyBillWave className="text-amber-600 text-2xl mr-3 mt-1" />
+                                            <div className="flex-1">
+                                                <h4 className="font-semibold text-gray-800 mb-2">
+                                                    Cash Payment Instructions
+                                                </h4>
+                                                <ul className="space-y-2 text-sm text-gray-700">
+                                                    <li className="flex items-start">
+                                                        <span className="text-amber-600 mr-2">•</span>
+                                                        <span>Please bring <strong>${totalPrice.toFixed(2)}</strong> in cash when picking up the vehicle</span>
+                                                    </li>
+                                                    <li className="flex items-start">
+                                                        <span className="text-amber-600 mr-2">•</span>
+                                                        <span>Payment must be made before vehicle handover</span>
+                                                    </li>
+                                                    <li className="flex items-start">
+                                                        <span className="text-amber-600 mr-2">•</span>
+                                                        <span>A receipt will be provided upon payment</span>
+                                                    </li>
+                                                    <li className="flex items-start">
+                                                        <span className="text-amber-600 mr-2">•</span>
+                                                        <span>Please ensure you have the exact amount or change will be provided</span>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Confirm Cash Payment Button */}
+                                    <button
+                                        onClick={handleCashPayment}
+                                        disabled={isProcessingCashPayment}
+                                        className={`w-full px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-700 text-white rounded-xl font-bold shadow-lg transition-all text-lg
+                                            ${isProcessingCashPayment
+                                                ? 'opacity-50 cursor-not-allowed'
+                                                : 'hover:shadow-xl hover:scale-105'
+                                            }`}
+                                    >
+                                        {isProcessingCashPayment ? (
+                                            <span className="flex items-center justify-center">
+                                                <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-white mr-3"></div>
+                                                Processing...
+                                            </span>
+                                        ) : (
+                                            <span className="flex items-center justify-center">
+                                                <FaMoneyBillWave className="mr-2" />
+                                                Confirm Cash Payment
+                                            </span>
+                                        )}
+                                    </button>
+
+                                    <p className="text-center text-sm text-gray-600">
+                                        By confirming, you agree to pay <strong>${totalPrice.toFixed(2)}</strong> in cash at pickup
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6">
