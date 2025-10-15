@@ -219,49 +219,58 @@ class PostController extends Controller
     public function show($id)
     {
         try {
-            $post = Post::with([
-                'agency',
-                'vehicle',
-                'comments' => function ($q) {
-                    $q->whereNull('deleted_at')->with('user');
-                }
-            ])->findOrFail($id);
+            $post = Post::with(['vehicle', 'agency', 'comments.user'])
+                ->findOrFail($id);
 
+            // Increment view count
             $post->increment('view_count');
 
-            // Process logo path with null check
-            if ($post->agency && $post->agency->logo_path && !Str::startsWith($post->agency->logo_path, 'https')) {
-                $post->agency->logo_path = Storage::url($post->agency->logo_path);
+            // Process agency logo
+            if ($post->agency && $post->agency->logo_path) {
+                if (!Str::startsWith($post->agency->logo_path, ['http://', 'https://'])) {
+                    $post->agency->logo_path = Storage::url($post->agency->logo_path);
+                }
             }
 
-            // Process vehicle images with null checks
-            if ($post->vehicle && $post->vehicle->images) {
-                $post->vehicle->images = collect($post->vehicle->images)
-                    ->map(function ($path) {
-                        if (Str::startsWith($path, ['http://', 'https://'])) {
-                            return $path;
-                        }
-                        return Storage::url($path);
-                    })
-                    ->toArray();
-            } else if ($post->vehicle) {
-                // If vehicle exists but has no images, set empty array
-                $post->vehicle->images = [];
+            // Process vehicle images
+            if ($post->vehicle) {
+                if ($post->vehicle->images && is_array($post->vehicle->images)) {
+                    $post->vehicle->images = collect($post->vehicle->images)
+                        ->map(function ($path) {
+                            if (empty($path)) return null;
+                            if (Str::startsWith($path, ['http://', 'https://'])) {
+                                return $path;
+                            }
+                            return Storage::url($path);
+                        })
+                        ->filter()
+                        ->values()
+                        ->toArray();
+                } else {
+                    $post->vehicle->images = [];
+                }
+
+                // Add placeholder if no images
+                if (empty($post->vehicle->images)) {
+                    $post->vehicle->images = [
+                        'https://via.placeholder.com/600x400/4F46E5/FFFFFF?text=' .
+                            urlencode($post->vehicle->brand . ' ' . $post->vehicle->model)
+                    ];
+                }
             }
 
-            return response()->json([
-                'success' => true,
-                'data' => $post
-            ], 200);
+            // Return the post directly (not wrapped in data)
+            return response()->json($post);
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Post not found'
+                'message' => 'Vehicle not found'
             ], 404);
         } catch (\Exception $e) {
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch post',
+                'message' => 'Failed to fetch vehicle details',
                 'error' => $e->getMessage()
             ], 500);
         }

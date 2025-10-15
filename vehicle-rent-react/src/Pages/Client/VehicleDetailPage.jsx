@@ -9,7 +9,7 @@ import {
     FaTag, FaCheckCircle, FaRoad, FaDollarSign, FaTrash,
     FaUserCircle
 } from 'react-icons/fa';
-import { AppContext } from "../../Context/AppContext";
+import { AppContext } from '../../Context/AppContext';
 
 import RentModal from '../../Components/RentModal';
 
@@ -28,18 +28,43 @@ export default function VehicleDetailPage() {
     const [refreshCount, setRefreshCount] = useState(0);
     const [deletingCommentId, setDeletingCommentId] = useState(null);
     const [showRentModal, setShowRentModal] = useState(false);
+
     const fetchPost = useCallback(async () => {
         try {
             setLoading(true);
+            setError(null);
+
             const response = await fetch(`/api/posts/${id}`);
 
             if (!response.ok) {
-                throw new Error('Vehicle not found');
+                if (response.status === 404) {
+                    throw new Error('Vehicle not found');
+                }
+                throw new Error(`Failed to load vehicle: ${response.status}`);
             }
 
             const data = await response.json();
-            setPost(data);
+
+            // Log to see what we're getting
+            console.log('Post data received:', data);
+
+            // Check if data has success property (wrapped response)
+            if (data.success === false) {
+                throw new Error(data.message || 'Failed to load vehicle');
+            }
+
+            // Handle both wrapped and direct responses
+            const postData = data.data || data;
+
+            // Validate essential data
+            if (!postData.vehicle) {
+                throw new Error('Vehicle data is missing');
+            }
+
+            setPost(postData);
+
         } catch (err) {
+            console.error('Fetch error:', err);
             setError(err.message);
         } finally {
             setLoading(false);
@@ -188,7 +213,8 @@ export default function VehicleDetailPage() {
     const features = vehicle.features || [];
     const comments = post.comments || [];
     const deliveryOptions = post.delivery_options || [];
-
+    console.log(deliveryOptions);
+    
     // Calculate discounted prices
     const originalDailyPrice = vehicle.price_per_day ?
         parseFloat(vehicle.price_per_day) / (1 - parseFloat(vehicle.discount_rate || 0) / 100) :
@@ -623,7 +649,7 @@ export default function VehicleDetailPage() {
                                         </div>
                                     )}
 
-                                    {deliveryOptions.includes('home delivery') && (
+                                    {deliveryOptions.includes("delivery") && (
                                         <div className="border border-gray-200 rounded-xl p-5 bg-white shadow-sm">
                                             <div className="flex items-start mb-4">
                                                 <div className="bg-green-100 p-2 rounded-lg mr-3">
